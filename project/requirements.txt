@@ -1,0 +1,13 @@
+# requirements.txt
+blosc2==2.7.1
+Cython==3.0.11
+msgpack==1.1.0
+ndindex==1.9.2
+numexpr==2.10.1
+numpy==2.1.3
+packaging==24.2
+py-cpuinfo==9.0.0
+PySAIS==1.1.0
+tables==3.10.1
+tqdm==4.67.0
+typing_extensions==4.12.2
