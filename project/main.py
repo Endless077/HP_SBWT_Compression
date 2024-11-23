@@ -7,6 +7,7 @@ import multiprocessing
 import SBWT as sbwt
 import MTF as mtf
 import Huffman as huff
+import sys  # Importato per gestire gli argomenti della riga di comando
 
 # Configurazione del logging
 logging.basicConfig(
@@ -14,14 +15,13 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Definizione della dimensione del blocco (1 KB)
-BLOCK_SIZE = 64 * 1024  # 1 KB
-
+# Definizione della dimensione del blocco (64 KB)
+BLOCK_SIZE = 64 * 1024  # 64 KB
 
 # Compressione e decompressione aggiornate
-def compress_data(input_data):
+def compress_data(input_data, key):
     logging.debug("Inizio processo di compressione dei dati.")
-    last_column, orig_ptr, custom_order = sbwt.sbwt_compress(input_data)
+    last_column, orig_ptr = sbwt.sbwt_compress(input_data, key)
     mtf_encoded, symbols = mtf.move_to_front_encode(last_column)
     huffman_encoded, huffman_codes, padding_length = huff.huffman_encode(mtf_encoded)
     logging.debug("Processo di compressione dei dati completato.")
@@ -29,40 +29,38 @@ def compress_data(input_data):
         'data': huffman_encoded,
         'padding_length': padding_length,
         'orig_ptr': orig_ptr,
-        'custom_order': custom_order,
         'symbols': symbols,
         'huffman_codes': huffman_codes
     }
 
-def decompress_data(compressed_data):
+def decompress_data(compressed_data, key):
     logging.debug("Inizio processo di decompressione dei dati.")
     huffman_encoded = compressed_data['data']
     padding_length = compressed_data['padding_length']
     orig_ptr = compressed_data['orig_ptr']
-    custom_order = compressed_data['custom_order']
     symbols = compressed_data['symbols']
     huffman_codes = compressed_data['huffman_codes']
 
     huffman_decoded = huff.huffman_decode(huffman_encoded, huffman_codes, padding_length)
     mtf_decoded = mtf.move_to_front_decode(huffman_decoded, symbols)
-    decompressed = sbwt.sbwt_decompress(mtf_decoded, orig_ptr, custom_order)
+    decompressed = sbwt.sbwt_decompress(mtf_decoded, orig_ptr, key)
     logging.debug("Processo di decompressione dei dati completato.")
     return decompressed
 
 # Funzione per comprimere un singolo blocco (per parallelizzazione)
-def compress_block(input_data):
+def compress_block(block_data, key):
     logging.debug("Compressione di un blocco.")
-    compressed_data = compress_data(input_data)
+    compressed_data = compress_data(block_data, key)
     return compressed_data
 
 # Funzione per decomprimere un singolo blocco (per parallelizzazione)
-def decompress_block(compressed_data):
+def decompress_block(compressed_data, key):
     logging.debug("Decompressione di un blocco.")
-    decompressed_data = decompress_data(compressed_data)
+    decompressed_data = decompress_data(compressed_data, key)
     return decompressed_data
 
 # Funzione per comprimere il file con suddivisione in blocchi e parallelizzazione
-def compress_file(input_file, output_file):
+def compress_file(input_file, output_file, key):
     logging.info(f"Avvio compressione: {input_file} -> {output_file}")
     
     # Verifica se il file di input esiste
@@ -98,7 +96,7 @@ def compress_file(input_file, output_file):
     # Utilizzo di ProcessPoolExecutor per comprimere i blocchi in parallelo
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         # Mappare i blocchi al pool di processi
-        futures = {executor.submit(compress_block, block_data): idx for idx, block_data in blocks}
+        futures = {executor.submit(compress_block, block_data, key): idx for idx, block_data in blocks}
         
         for future in as_completed(futures):
             idx = futures[future]
@@ -122,7 +120,8 @@ def compress_file(input_file, output_file):
             # Scrivi metadati per il blocco
             fout.write(compressed_data['padding_length'].to_bytes(1, byteorder='big'))
             fout.write(compressed_data['orig_ptr'].to_bytes(4, byteorder='big'))
-            sbwt.save_custom_order(fout, compressed_data['custom_order'])
+            # Non salvare più custom_order
+            
             mtf.save_symbols(fout, compressed_data['symbols'])
             huff.save_huffman_codes(fout, compressed_data['huffman_codes'])
             
@@ -145,13 +144,16 @@ def compress_file(input_file, output_file):
     
     # Log della riduzione delle dimensioni
     if input_size > 0:
-        reduction = ((input_size - compressed_size) / input_size) * 100
-        logging.info(f"Riduzione delle dimensioni: {reduction:.2f}%")
+        if compressed_size < input_size:
+            reduction = ((input_size - compressed_size) / input_size) * 100
+            logging.info(f"Riduzione delle dimensioni: {reduction:.2f}%")
+        else:
+            logging.info("Compressione riuscima ma il file compresso è più pesante del file di input.")
     else:
         logging.warning("Il file di input è vuoto.")
 
 # Funzione per decomprimere il file con suddivisione in blocchi e parallelizzazione
-def decompress_file(input_file, output_file):
+def decompress_file(input_file, output_file, key):
     logging.info(f"Avvio decompressione: {input_file} -> {output_file}")
     
     # Verifica se il file di input esiste
@@ -174,7 +176,8 @@ def decompress_file(input_file, output_file):
             # Leggi metadati del blocco
             padding_length = int.from_bytes(fin.read(1), byteorder='big')
             orig_ptr = int.from_bytes(fin.read(4), byteorder='big')
-            custom_order = sbwt.load_custom_order(fin)
+            # Non caricare più custom_order
+            
             symbols = mtf.load_symbols(fin)
             huffman_codes = huff.load_huffman_codes(fin)
             
@@ -186,7 +189,6 @@ def decompress_file(input_file, output_file):
                 'data': huffman_encoded,
                 'padding_length': padding_length,
                 'orig_ptr': orig_ptr,
-                'custom_order': custom_order,
                 'symbols': symbols,
                 'huffman_codes': huffman_codes
             }
@@ -204,7 +206,7 @@ def decompress_file(input_file, output_file):
     # Utilizzo di ProcessPoolExecutor per decomprimere i blocchi in parallelo
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         # Mappare i blocchi al pool di processi
-        futures = {executor.submit(decompress_block, block_data): idx for idx, block_data in blocks}
+        futures = {executor.submit(decompress_block, block_data, key): idx for idx, block_data in blocks}
         
         for future in as_completed(futures):
             idx = futures[future]
@@ -245,19 +247,19 @@ def decompress_file(input_file, output_file):
 
 # Funzione principale
 def main():
-    import sys
-    if len(sys.argv) < 4:
-        print("Usage: python3 script.py compress <input_file> <output_file> | decompress <input_file> <output_file>")
+    if len(sys.argv) < 5:
+        print("Usage: python3 script.py <compress|decompress> <input_file> <output_file> <key>")
         sys.exit(1)
 
     operation = sys.argv[1]
     input_file = sys.argv[2]
     output_file = sys.argv[3]
+    key = sys.argv[4]
 
     if operation == "compress":
-        compress_file(input_file, output_file)
+        compress_file(input_file, output_file, key)
     elif operation == "decompress":
-        decompress_file(input_file, output_file)
+        decompress_file(input_file, output_file, key)
     else:
         print("Operazione non riconosciuta. Usa 'compress' o 'decompress'.")
         sys.exit(1)
