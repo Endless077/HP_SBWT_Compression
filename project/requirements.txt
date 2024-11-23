@@ -1,3 +1,5 @@
+# requirements.txt
+
 blosc2==2.7.1
 Cython==3.0.11
 msgpack==1.1.0

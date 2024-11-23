@@ -1,13 +1,12 @@
-import numpy as np
 import logging
 import os
-import time  # Importazione del modulo time
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
-import SBWT as sbwt
-import MTF as mtf
-import Huffman as huff
-import sys  # Importato per gestire gli argomenti della riga di comando
+from utils.SBWT import *
+from utils.MTF import *
+from utils.Huffman import *
+import sys
 
 # Configurazione del logging
 logging.basicConfig(
@@ -21,9 +20,9 @@ BLOCK_SIZE = 64 * 1024  # 64 KB
 # Compressione e decompressione aggiornate
 def compress_data(input_data, key):
     logging.debug("Inizio processo di compressione dei dati.")
-    last_column, orig_ptr = sbwt.sbwt_compress(input_data, key)
-    mtf_encoded, symbols = mtf.move_to_front_encode(last_column)
-    huffman_encoded, huffman_codes, padding_length = huff.huffman_encode(mtf_encoded)
+    last_column, orig_ptr = sbwt_encode(input_data, key)
+    mtf_encoded, symbols = mft_encode(last_column)
+    huffman_encoded, huffman_codes, padding_length = huffman_encode(mtf_encoded)
     logging.debug("Processo di compressione dei dati completato.")
     return {
         'data': huffman_encoded,
@@ -41,9 +40,9 @@ def decompress_data(compressed_data, key):
     symbols = compressed_data['symbols']
     huffman_codes = compressed_data['huffman_codes']
 
-    huffman_decoded = huff.huffman_decode(huffman_encoded, huffman_codes, padding_length)
-    mtf_decoded = mtf.move_to_front_decode(huffman_decoded, symbols)
-    decompressed = sbwt.sbwt_decompress(mtf_decoded, orig_ptr, key)
+    huffman_decoded = huffman_decode(huffman_encoded, huffman_codes, padding_length)
+    mtf_decoded = mft_decode(huffman_decoded, symbols)
+    decompressed = sbwt_decode(mtf_decoded, orig_ptr, key)
     logging.debug("Processo di decompressione dei dati completato.")
     return decompressed
 
@@ -122,8 +121,8 @@ def compress_file(input_file, output_file, key):
             fout.write(compressed_data['orig_ptr'].to_bytes(4, byteorder='big'))
             # Non salvare più custom_order
             
-            mtf.save_symbols(fout, compressed_data['symbols'])
-            huff.save_huffman_codes(fout, compressed_data['huffman_codes'])
+            save_symbols(fout, compressed_data['symbols'])
+            save_huffman_codes(fout, compressed_data['huffman_codes'])
             
             # Scrivi la lunghezza dei dati Huffman compressi
             data_length = len(compressed_data['data'])
@@ -178,8 +177,8 @@ def decompress_file(input_file, output_file, key):
             orig_ptr = int.from_bytes(fin.read(4), byteorder='big')
             # Non caricare più custom_order
             
-            symbols = mtf.load_symbols(fin)
-            huffman_codes = huff.load_huffman_codes(fin)
+            symbols = load_symbols(fin)
+            huffman_codes = load_huffman_codes(fin)
             
             # Leggi la lunghezza dei dati Huffman compressi
             data_length = int.from_bytes(fin.read(4), byteorder='big')
