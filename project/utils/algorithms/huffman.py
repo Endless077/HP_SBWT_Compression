@@ -1,7 +1,12 @@
-# Huffman Encoding/Decodning
+# ____  ____            ___    ___                              
+#|_   ||   _|         .' ..] .' ..]                             
+#  | |__| |  __   _  _| |_  _| |_  _ .--..--.   ,--.   _ .--.   
+#  |  __  | [  | | |'-| |-''-| |-'[ `.-. .-. | `'_\ : [ `.-. |  
+# _| |  | |_ | \_/ |, | |    | |   | | | | | | // | |, | | | |  
+#|____||____|'.__.'_/[___]  [___] [___||__||__]\'-;__/[___||__]                                                              
 
-import heapq
 import math
+import heapq
 import logging
 import numpy as np
 from collections import Counter

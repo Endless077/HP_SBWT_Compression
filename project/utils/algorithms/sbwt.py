@@ -1,4 +1,10 @@
-# Scrambled Burrows-Wheeler Transform (SBWT)
+#    ______   ______  ____      ____  _________  
+#  .' ____ \ |_   _ \|_  _|    |_  _||  _   _  | 
+#  | (___ \_|  | |_) | \ \  /\  / /  |_/ | | \_| 
+#   _.____`.   |  __'.  \ \/  \/ /       | |     
+#  | \____) | _| |__) |  \  /\  /       _| |_    
+#   \______.'|_______/    \/  \/       |_____|   
+#                                                
 
 import logging
 import hashlib
@@ -120,9 +126,9 @@ def sbwt_encode(input_string, key):
     # Find the original pointer
     try:
         orig_ptr = int(np.where(suffix_array == 0)[0][0])
-    except IndexError:
+    except IndexError as e:
         logging.error("Original pointer not found in the suffix array.")
-        orig_ptr = 0  # Fallback value if not found
+        raise ValueError(f"Original pointer not found in the suffix array: {e}")
 
     logging.debug("SBWT transform completed.")
     return last_column, orig_ptr

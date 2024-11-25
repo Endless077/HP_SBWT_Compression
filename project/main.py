@@ -1,79 +1,54 @@
-import logging
-import os
-import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+# ____    ____          _            
+#|_   \  /   _|        (_)           
+#  |   \/   |   ,--.   __   _ .--.   
+#  | |\  /| |  `'_\ : [  | [ `.-. |  
+# _| |_\/_| |_ // | |, | |  | | | |  
+#|_____||_____|\'-;__/[___][___||__] 
+                                                                                                                             
+# Multi-processing
 import multiprocessing
-from utils.SBWT import *
-from utils.MTF import *
-from utils.Huffman import *
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+# System libraries
+import os
 import sys
+import time
 
-# Configurazione del logging
-logging.basicConfig(
-    level=logging.INFO,  # Impostato su INFO per ridurre l'overhead
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Support libraries
+from utils.logging import *
+from utils.support import *
 
-# Definizione della dimensione del blocco (64 KB)
-BLOCK_SIZE = 64 * 1024  # 64 KB
+###################################################################################################
 
-# Compressione e decompressione aggiornate
-def compress_data(input_data, key):
-    logging.debug("Inizio processo di compressione dei dati.")
-    last_column, orig_ptr = sbwt_encode(input_data, key)
-    mtf_encoded, symbols = mft_encode(last_column)
-    huffman_encoded, huffman_codes, padding_length = huffman_encode(mtf_encoded)
-    logging.debug("Processo di compressione dei dati completato.")
-    return {
-        'data': huffman_encoded,
-        'padding_length': padding_length,
-        'orig_ptr': orig_ptr,
-        'symbols': symbols,
-        'huffman_codes': huffman_codes
-    }
+# Block Dimension (64 KB)
+BLOCK_SIZE = 64 * 1024
 
-def decompress_data(compressed_data, key):
-    logging.debug("Inizio processo di decompressione dei dati.")
-    huffman_encoded = compressed_data['data']
-    padding_length = compressed_data['padding_length']
-    orig_ptr = compressed_data['orig_ptr']
-    symbols = compressed_data['symbols']
-    huffman_codes = compressed_data['huffman_codes']
+###################################################################################################
 
-    huffman_decoded = huffman_decode(huffman_encoded, huffman_codes, padding_length)
-    mtf_decoded = mft_decode(huffman_decoded, symbols)
-    decompressed = sbwt_decode(mtf_decoded, orig_ptr, key)
-    logging.debug("Processo di decompressione dei dati completato.")
-    return decompressed
+# Compress an input file in parallel blocks
+def compress_file(input_file, output_file, mode, key):
+    """
+    Compresses a file by dividing it into blocks and processing them in parallel.
 
-# Funzione per comprimere un singolo blocco (per parallelizzazione)
-def compress_block(block_data, key):
-    logging.debug("Compressione di un blocco.")
-    compressed_data = compress_data(block_data, key)
-    return compressed_data
-
-# Funzione per decomprimere un singolo blocco (per parallelizzazione)
-def decompress_block(compressed_data, key):
-    logging.debug("Decompressione di un blocco.")
-    decompressed_data = decompress_data(compressed_data, key)
-    return decompressed_data
-
-# Funzione per comprimere il file con suddivisione in blocchi e parallelizzazione
-def compress_file(input_file, output_file, key):
-    logging.info(f"Avvio compressione: {input_file} -> {output_file}")
+    Args:
+        input_file (str): Path to the input file.
+        output_file (str): Path to save the compressed file.
+        mode (str): Compression mode ("huffman" or "arithmetic").
+        key (str): Key for SBWT encoding.
+    """
+    logging.info(f"Starting compression: {input_file} -> {output_file}")
     
-    # Verifica se il file di input esiste
+    # Check the input file
     if not os.path.isfile(input_file):
-        logging.error(f"Il file di input '{input_file}' non esiste.")
-        return
+        logging.error(f"Input file '{input_file}' does not exist.")
+        raise FileNotFoundError(f"Input file '{input_file}' does not exist.")
+
+    # Start the counter
+    start_time = time.perf_counter()
     
-    # Calcola la dimensione del file di input
-    input_size = os.path.getsize(input_file)
-    logging.info(f"Dimensione del file di input: {input_size} byte.")
-    
-    start_time = time.perf_counter()  # Inizio della misurazione del tempo
-    
+    # Read the input file and split it into blocks
     blocks = []
+    input_size = 0
     with open(input_file, 'r', encoding='utf-8') as fin:
         block_number = 0
         while True:
@@ -82,108 +57,106 @@ def compress_file(input_file, output_file, key):
                 break
             block_number += 1
             blocks.append((block_number, input_data))
-    
-    logging.info(f"Totale blocchi da comprimere: {block_number}")
+            input_size += len(input_data)
+    logging.info(f"Input file size: {input_size} bytes.")
     
     compressed_blocks = {}
     
-    # Calcolo del numero massimo di processi per utilizzare al massimo il 60% dei core
+    # Configure parallel processing with up to 60% of available CPU cores
     total_cores = multiprocessing.cpu_count()
     num_workers = max(1, int(total_cores * 0.6))
-    logging.info(f"Utilizzo di {num_workers} processi per la compressione parallela.")
+    logging.info(f"Using {num_workers} processes for parallel compression.")
     
-    # Utilizzo di ProcessPoolExecutor per comprimere i blocchi in parallelo
+    # Using ProcessPoolExecutor to compress blocks in parallel
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        # Mappare i blocchi al pool di processi
+        # Start the process pool executor mapping
         futures = {executor.submit(compress_block, block_data, key): idx for idx, block_data in blocks}
-        
+
         for future in as_completed(futures):
             idx = futures[future]
             try:
                 compressed_data = future.result()
                 compressed_blocks[idx] = compressed_data
             except Exception as e:
-                logging.error(f"Errore nella compressione del blocco {idx}: {e}")
+                logging.error(f"Error compressing block {idx}: {e}")
     
-    # Scrivere i blocchi compressi in ordine
+    # Count failed blocks after parallel compression
+    failed_blocks = sum(1 for idx in range(1, block_number + 1) if compressed_blocks.get(idx) is None)
+    if failed_blocks > 0:
+        logging.error(f"{failed_blocks} blocks failed during compression. Process incomplete.")
+        raise ValueError(f"{failed_blocks} blocks failed during compression. Process incomplete.")
+
+    # Write compressed blocks to the output file
     with open(output_file, 'wb') as fout:
         for idx in range(1, block_number + 1):
             compressed_data = compressed_blocks.get(idx)
             if compressed_data is None:
-                logging.error(f"Blocco {idx} mancante. Compressione incompleta.")
+                logging.error(f"Block {idx} missing. Incomplete compression.")
                 continue
             
-            # Cambiato da logging.info a logging.debug per evitare messaggi eccessivi
-            logging.debug(f"Inizio scrittura del blocco {idx} compresso.")
-            
-            # Scrivi metadati per il blocco
+            logging.debug(f"Start writing compressed {idx} block.")
+
+            # Write the block metadata
             fout.write(compressed_data['padding_length'].to_bytes(1, byteorder='big'))
             fout.write(compressed_data['orig_ptr'].to_bytes(4, byteorder='big'))
-            # Non salvare più custom_order
-            
+
             save_symbols(fout, compressed_data['symbols'])
             save_huffman_codes(fout, compressed_data['huffman_codes'])
-            
-            # Scrivi la lunghezza dei dati Huffman compressi
-            data_length = len(compressed_data['data'])
-            fout.write(data_length.to_bytes(4, byteorder='big'))  # 4 byte per data_length
-            
-            # Scrivi i dati Huffman compressi
-            fout.write(compressed_data['data'])
-            # Cambiato da logging.info a logging.debug per evitare messaggi eccessivi
-            logging.debug(f"Scrittura del blocco {idx} completata.")
-    
-    end_time = time.perf_counter()  # Fine della misurazione del tempo
-    duration = end_time - start_time
-    logging.info(f"Compressione completata in {duration:.4f} secondi.")
-    
-    # Calcola la dimensione del file compresso
-    compressed_size = os.path.getsize(output_file)
-    logging.info(f"Dimensione del file compresso: {compressed_size} byte.")
-    
-    # Log della riduzione delle dimensioni
-    if input_size > 0:
-        if compressed_size < input_size:
-            reduction = ((input_size - compressed_size) / input_size) * 100
-            logging.info(f"Riduzione delle dimensioni: {reduction:.2f}%")
-        else:
-            logging.info("Compressione riuscima ma il file compresso è più pesante del file di input.")
-    else:
-        logging.warning("Il file di input è vuoto.")
 
-# Funzione per decomprimere il file con suddivisione in blocchi e parallelizzazione
+            fout.write(len(compressed_data['data']).to_bytes(4, byteorder='big'))
+            fout.write(compressed_data['data'])
+
+            logging.debug(f"Writing block {idx} completed.")
+    
+    end_time = time.perf_counter()
+    duration = end_time - start_time
+    logging.info(f"Compression completed in {duration:.4f} seconds.")
+    
+    # Dimension of the compressed file
+    log_metrics(output_file, input_size, "compress")
+
+# Decompress an input file in parallel blocks
 def decompress_file(input_file, output_file, key):
-    logging.info(f"Avvio decompressione: {input_file} -> {output_file}")
+    """
+    Decompresses a file by dividing it into blocks and processing them in parallel.
+
+    Args:
+        input_file (str): Path to the compressed input file.
+        output_file (str): Path to save the decompressed file.
+        key (str): Key for SBWT decoding.
+    """
+    logging.info(f"Starting decompression: {input_file} -> {output_file}")
     
-    # Verifica se il file di input esiste
+    # Check the input file
     if not os.path.isfile(input_file):
-        logging.error(f"Il file di input '{input_file}' non esiste.")
-        return
-    
-    # Calcola la dimensione del file compresso
+        logging.error(f"Input file '{input_file}' does not exist.")
+        raise FileNotFoundError(f"Input file '{input_file}' does not exist.")
+
+    # Get the input file size
     compressed_size = os.path.getsize(input_file)
-    logging.info(f"Dimensione del file compresso: {compressed_size} byte.")
-    
-    start_time = time.perf_counter()  # Inizio della misurazione del tempo
-    
+    logging.info(f"Compressed file size: {compressed_size} bytes.")
+
+    # Start the counter
+    start_time = time.perf_counter()
+
+    # Read compressed file and parse it into blocks
     blocks = []
     with open(input_file, 'rb') as fin:
         while fin.tell() < compressed_size:
             block_number = len(blocks) + 1
-            logging.debug(f"Inizio lettura del blocco {block_number}.")
-            
-            # Leggi metadati del blocco
+            logging.debug(f"Beginning block reading: {block_number}.")
+
+            # Read the block metadata
             padding_length = int.from_bytes(fin.read(1), byteorder='big')
             orig_ptr = int.from_bytes(fin.read(4), byteorder='big')
-            # Non caricare più custom_order
-            
+
             symbols = load_symbols(fin)
             huffman_codes = load_huffman_codes(fin)
-            
-            # Leggi la lunghezza dei dati Huffman compressi
+
             data_length = int.from_bytes(fin.read(4), byteorder='big')
             huffman_encoded = bytearray(fin.read(data_length))
-            
+
+            # Build the block metadata struct
             compressed_data = {
                 'data': huffman_encoded,
                 'padding_length': padding_length,
@@ -192,76 +165,116 @@ def decompress_file(input_file, output_file, key):
                 'huffman_codes': huffman_codes
             }
             blocks.append((block_number, compressed_data))
-    
-    logging.info(f"Totale blocchi da decomprimere: {len(blocks)}")
-    
-    decompressed_blocks = {}
-    
-    # Calcolo del numero massimo di processi per utilizzare al massimo il 60% dei core
+
+    # Only data block filter
+    blocks = [block for block in blocks if block[1]['data']]
+    logging.info(f"Total blocks to decompress: {len(blocks)}.")
+
+    # Calculation of the maximum number of processes to use a maximum of 60% of the cores
     total_cores = multiprocessing.cpu_count()
     num_workers = max(1, int(total_cores * 0.6))
-    logging.info(f"Utilizzo di {num_workers} processi per la decompressione parallela.")
-    
-    # Utilizzo di ProcessPoolExecutor per decomprimere i blocchi in parallelo
+    logging.info(f"Using {num_workers} processes for parallel decompression.")
+
+    # Using ProcessPoolExecutor to decompress blocks in parallel
+    decompressed_blocks = {}
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        # Mappare i blocchi al pool di processi
+        # Start the process pool executor mapping
         futures = {executor.submit(decompress_block, block_data, key): idx for idx, block_data in blocks}
-        
+
         for future in as_completed(futures):
             idx = futures[future]
             try:
                 decompressed_data = future.result()
                 decompressed_blocks[idx] = decompressed_data
             except Exception as e:
-                logging.error(f"Errore nella decompressione del blocco {idx}: {e}")
-    
-    # Scrivere i blocchi decompressi in ordine
+                logging.error(f"Error decompressing block {idx}: {e}")
+
+    # Count failed blocks after parallel decompression
+    failed_blocks = sum(1 for idx in range(1, len(blocks) + 1) if decompressed_blocks.get(idx) is None)
+    if failed_blocks > 0:
+        logging.error(f"{failed_blocks} blocks failed during decompression. Process incomplete.")
+        raise ValueError(f"{failed_blocks} blocks failed during decompression. Process incomplete.")
+
     with open(output_file, 'w', encoding='utf-8') as fout:
         for idx in range(1, len(blocks) + 1):
             decompressed_data = decompressed_blocks.get(idx)
             if decompressed_data is None:
-                logging.error(f"Blocco {idx} mancante. Decompressione incompleta.")
+                logging.error(f"Block {idx} missing. Incomplete decompression.")
                 continue
             
-            # Cambiato da logging.info a logging.debug per evitare messaggi eccessivi
-            logging.debug(f"Inizio scrittura del blocco {idx} decompresso.")
+            logging.debug(f"Start writing the decompressed {idx} block.")
             fout.write(decompressed_data)
-            # Cambiato da logging.info a logging.debug per evitare messaggi eccessivi
-            logging.debug(f"Scrittura del blocco {idx} completata.")
+            logging.debug(f"Writing block {idx} completed.")
     
-    end_time = time.perf_counter()  # Fine della misurazione del tempo
+    end_time = time.perf_counter()
     duration = end_time - start_time
-    logging.info(f"Decompressione completata in {duration:.4f} secondi.")
+    logging.info(f"Decompression completed in {duration:.4f} seconds.")
     
-    # Calcola la dimensione del file di output
-    output_size = os.path.getsize(output_file)
-    logging.info(f"Dimensione del file di output: {output_size} byte.")
-    
-    # Log della crescita delle dimensioni
-    if compressed_size > 0:
-        growth = ((output_size - compressed_size) / compressed_size) * 100
-        logging.info(f"Crescita delle dimensioni: {growth:.2f}%")
-    else:
-        logging.warning("Il file compresso è vuoto.")
+    # Dimension of the decompressed file
+    log_metrics(output_file, compressed_size, "decompress")
 
-# Funzione principale
+###################################################################################################
+
+# Main Function
 def main():
-    if len(sys.argv) < 5:
-        print("Usage: python3 script.py <compress|decompress> <input_file> <output_file> <key>")
+    # Ensure at least the operation is specified
+    if len(sys.argv) < 2:
+        print(f"{USAGE_COMPRESSION}\n{USAGE_DECOMPRESSION}")
         sys.exit(1)
 
-    operation = sys.argv[1]
-    input_file = sys.argv[2]
-    output_file = sys.argv[3]
-    key = sys.argv[4]
+    # Retrieve operation
+    operation = sys.argv[1].lower()
 
+    # Operation type checking
     if operation == "compress":
-        compress_file(input_file, output_file, key)
+        if len(sys.argv) != 6:
+            print(USAGE_COMPRESSION)
+            sys.exit(1)
+        mode = sys.argv[2]
+        input_file = sys.argv[3]
+        output_file = sys.argv[4]
+        key = sys.argv[5]
+    elif operation == "decompress":
+        if len(sys.argv) != 5:
+            print(USAGE_DECOMPRESSION)
+            sys.exit(1)
+        input_file = sys.argv[2]
+        output_file = sys.argv[3]
+        key = sys.argv[4]
+    else:
+        print(f"Operation not recognized. Use 'compress' or 'decompress'.")
+        sys.exit(1)
+
+    # Key validation
+    if os.path.isfile(key):  # Check if the key is a file
+        try:
+            with open(key, 'r') as key_file:
+                key = key_file.read().strip()
+                logging.info(f"Key loaded from file: {key}")
+        except Exception as e:
+            logging.error(f"Failed to load key from file: {e}")
+            sys.exit(1)
+
+    if not key or len(key) < 16 or not key.isalnum():
+        logging.error("Invalid key provided. The key must be at least 16 alphanumeric characters.")
+        sys.exit(1)
+
+    # Welcome Message
+    print(r" ____  ____  _______     ______   ______  ____      ____  _________  ")
+    print(r"|_   ||   _||_   __ \  .' ____ \ |_   _ \|_  _|    |_  _||  _   _  | ")
+    print(r"  | |__| |    | |__) | | (___ \_|  | |_) | \ \  /\  / /  |_/ | | \_| ")
+    print(r"  |  __  |    |  ___/   _.____`.   |  __'.  \ \/  \/ /       | |     ")
+    print(r" _| |  | |_  _| |_     | \____) | _| |__) |  \  /\  /       _| |_    ")
+    print(r"|____||____||_____|     \______.'|_______/    \/  \/       |_____|   (a High Performance SBWT Compression)")
+    print(r"                                                                     ")
+
+    # Operation execution
+    if operation == "compress":
+        compress_file(input_file, output_file, mode, key)
     elif operation == "decompress":
         decompress_file(input_file, output_file, key)
-    else:
-        print("Operazione non riconosciuta. Usa 'compress' o 'decompress'.")
-        sys.exit(1)
 
 if __name__ == "__main__":
     main()
+
+###################################################################################################
