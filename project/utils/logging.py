@@ -12,8 +12,7 @@ import logging
 ###################################################################################################
 
 # Usage messages
-USAGE_COMPRESSION = "Usage for compression: python3 script.py compress <mod> <input_file> <output_file> <key | file.key>"
-USAGE_DECOMPRESSION = "Usage for decompression: python3 script.py decompress <input_file> <output_file> <key | file.key>"
+USAGE = "Usage for compression: python3 script.py <compress | decompress> <input_file> <output_file> <key | file.key>"
 
 ###################################################################################################
 

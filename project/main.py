@@ -26,14 +26,13 @@ BLOCK_SIZE = 64 * 1024
 ###################################################################################################
 
 # Compress an input file in parallel blocks
-def compress_file(input_file, output_file, mode, key):
+def compress_file(input_file, output_file, key):
     """
     Compresses a file by dividing it into blocks and processing them in parallel.
 
     Args:
         input_file (str): Path to the input file.
         output_file (str): Path to save the compressed file.
-        mode (str): Compression mode ("huffman" or "arithmetic").
         key (str): Key for SBWT encoding.
     """
     logging.info(f"Starting compression: {input_file} -> {output_file}")
@@ -218,35 +217,19 @@ def decompress_file(input_file, output_file, key):
 # Main Function
 def main():
     # Ensure at least the operation is specified
-    if len(sys.argv) < 2:
-        print(f"{USAGE_COMPRESSION}\n{USAGE_DECOMPRESSION}")
+    if len(sys.argv) < 5:
+        print(f"{USAGE}")
         sys.exit(1)
 
     # Retrieve operation
     operation = sys.argv[1].lower()
 
-    # Operation type checking
-    if operation == "compress":
-        if len(sys.argv) != 6:
-            print(USAGE_COMPRESSION)
-            sys.exit(1)
-        mode = sys.argv[2]
-        input_file = sys.argv[3]
-        output_file = sys.argv[4]
-        key = sys.argv[5]
-    elif operation == "decompress":
-        if len(sys.argv) != 5:
-            print(USAGE_DECOMPRESSION)
-            sys.exit(1)
-        input_file = sys.argv[2]
-        output_file = sys.argv[3]
-        key = sys.argv[4]
-    else:
-        print(f"Operation not recognized. Use 'compress' or 'decompress'.")
-        sys.exit(1)
+    input_file = sys.argv[2]
+    output_file = sys.argv[3]
+    key = sys.argv[4]
 
     # Key validation
-    if os.path.isfile(key):  # Check if the key is a file
+    if os.path.isfile(key):
         try:
             with open(key, 'r') as key_file:
                 key = key_file.read().strip()
@@ -270,9 +253,12 @@ def main():
 
     # Operation execution
     if operation == "compress":
-        compress_file(input_file, output_file, mode, key)
+        compress_file(input_file, output_file, key)
     elif operation == "decompress":
         decompress_file(input_file, output_file, key)
+    else:
+        print(f"Operation not recognized. Use 'compress' or 'decompress'.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

@@ -77,14 +77,14 @@ def decompress_data(compressed_data, key):
 # Single Block Compression (parallel task)
 def compress_block(block_data, key):
     """
-    Compresses a single block of data using the compression pipeline (SBWT, MTF, Huffman).
+    Compresses a single block of data using the compression pipeline.
 
     Args:
         block_data (str): Input data for the block to compress.
         key (str): Key used for SBWT encoding.
 
     Returns:
-        dict: A dictionary containing the compressed data and metadata (padding, symbols, etc.).
+        dict: A dictionary containing the compressed data and metadata.
     """
     logging.debug("Starting compression of a single block.")
     try:
@@ -98,10 +98,10 @@ def compress_block(block_data, key):
 # Single Block Decompression (parallel task)
 def decompress_block(compressed_data, key):
     """
-    Decompresses a single block of compressed data using the decompression pipeline (Huffman, MTF, SBWT).
+    Decompresses a single block of compressed data using the decompression pipeline.
 
     Args:
-        compressed_data (dict): A dictionary containing compressed data and metadata (padding, symbols, etc.).
+        compressed_data (dict): A dictionary containing compressed data and metadata.
         key (str): Key used for SBWT decoding.
 
     Returns:
@@ -115,5 +115,50 @@ def decompress_block(compressed_data, key):
     except Exception as e:
         logging.error(f"Error during block decompression: {e}", exc_info=True)
         raise RuntimeError("Block decompression failed.") from e
+
+###################################################################################################
+
+# Retreaving Symbols
+def load_symbols(f):
+    """
+    Loads symbols from a binary file.
+    
+    Args:
+        f (file object): File object opened in binary read mode.
+        
+    Returns:
+        list: List of unique symbols loaded from the file.
+    """
+    logging.debug("Loading symbols.")
+
+    symbols_length = int.from_bytes(f.read(2), byteorder='big')     # Read number of symbols
+    symbols = []
+    for _ in range(symbols_length):
+        symbol_length = int.from_bytes(f.read(1), byteorder='big')  # Read symbol length
+        symbol_bytes = f.read(symbol_length)                        # Read symbol bytes
+        symbol = symbol_bytes.decode('utf-8')                       # Decode symbol
+        symbols.append(symbol)
+
+    logging.debug("symbols loaded successfully.")
+    return symbols
+
+# Storing Symbols
+def save_symbols(f, symbols):
+    """
+    Saves the symbols to a binary file.
+    
+    Args:
+        f (file object): File object opened in binary write mode.
+        symbols (list): List of unique symbols to save.
+    """
+    logging.debug("Saving symbols.")
+
+    f.write(len(symbols).to_bytes(2, byteorder='big'))              # Write the number of symbols
+    for symbol in symbols:
+        symbol_bytes = symbol.encode('utf-8')
+        f.write(len(symbol_bytes).to_bytes(1, byteorder='big'))     # Write symbol length
+        f.write(symbol_bytes)                                       # Write symbol itself
+
+    logging.debug("Symbols saved successfully.")
 
 ###################################################################################################
