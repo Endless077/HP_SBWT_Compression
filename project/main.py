@@ -60,7 +60,7 @@ def compress_file(input_file, output_file, mode, key):
                 break
 
             # Block subdivision
-            blocks.append((block_number, input_data, mode, key))
+            blocks.append((block_number, input_data, mode, key_derivation(key, block_number)))
             block_number += 1
 
             # Input size calculation
@@ -151,7 +151,7 @@ def decompress_file(input_file, output_file, key):
             try:
                 compressed_data = pickle.load(fin)
                 block_number = compressed_data['block_number']
-                blocks.append((block_number, compressed_data, key))
+                blocks.append((block_number, compressed_data, key_derivation(key, block_number)))
             except EOFError:
                 logging.debug("End of compressed file reached.")
                 break
@@ -255,8 +255,8 @@ def main():
             logging.error(f"Failed to load key from file: {e}")
             sys.exit(1)
 
-    if not key or len(key) < 16 or not key.isalnum():
-        logging.error("Invalid key provided. The key must be at least 16 alphanumeric characters.")
+    if not key or len(key) < 16 or len(key)>32 or not key.isalnum():
+        print("Invalid key provided. The key must be at least 16 to 32 alphanumeric characters.")
         sys.exit(1)
 
     # Welcome Message
