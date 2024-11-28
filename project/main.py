@@ -9,6 +9,9 @@
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+# Serialization
+import pickle
+
 # System libraries
 import os
 import sys
@@ -26,13 +29,14 @@ BLOCK_SIZE = 64 * 1024
 ###################################################################################################
 
 # Compress an input file in parallel blocks
-def compress_file(input_file, output_file, key):
+def compress_file(input_file, output_file, mode, key):
     """
     Compresses a file by dividing it into blocks and processing them in parallel.
 
     Args:
         input_file (str): Path to the input file.
         output_file (str): Path to save the compressed file.
+        mode (str): Compression mode.
         key (str): Key for SBWT encoding.
     """
     logging.info(f"Starting compression: {input_file} -> {output_file}")
@@ -48,14 +52,18 @@ def compress_file(input_file, output_file, key):
     # Read the input file and split it into blocks
     blocks = []
     input_size = 0
-    with open(input_file, 'r', encoding='utf-8') as fin:
+    with open(input_file, 'rb') as fin:
         block_number = 0
         while True:
             input_data = fin.read(BLOCK_SIZE)
             if not input_data:
                 break
+
+            # Block subdivision
+            blocks.append((block_number, input_data, mode, key))
             block_number += 1
-            blocks.append((block_number, input_data))
+
+            # Input size calculation
             input_size += len(input_data)
     logging.info(f"Input file size: {input_size} bytes.")
     
@@ -69,41 +77,39 @@ def compress_file(input_file, output_file, key):
     # Using ProcessPoolExecutor to compress blocks in parallel
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         # Start the process pool executor mapping
-        futures = {executor.submit(compress_block, block_data, key): idx for idx, block_data in blocks}
+        futures = {executor.submit(compress_block, args): args[0] for args in blocks}
 
         for future in as_completed(futures):
             idx = futures[future]
             try:
                 compressed_data = future.result()
-                compressed_blocks[idx] = compressed_data
+                if compressed_data:
+                    compressed_blocks[idx] = compressed_data
+                else:
+                    logging.error(f"Compression failed for block {idx}.")
+                    raise RuntimeError(f"Compression failed for block {idx}.")
             except Exception as e:
                 logging.error(f"Error compressing block {idx}: {e}")
-    
-    # Count failed blocks after parallel compression
-    failed_blocks = sum(1 for idx in range(1, block_number + 1) if compressed_blocks.get(idx) is None)
-    if failed_blocks > 0:
-        logging.error(f"{failed_blocks} blocks failed during compression. Process incomplete.")
-        raise ValueError(f"{failed_blocks} blocks failed during compression. Process incomplete.")
+                raise RuntimeError(f"Error compressing block {idx}: {e}")
 
+    # Count failed blocks after parallel compression
+    failed_blocks = sum(1 for idx in range(block_number) if compressed_blocks.get(idx) is None)
+    if failed_blocks > 0:
+        logging.error(f"Failure of {failed_blocks} blocks failed during compression. Process incomplete.")
+        raise RuntimeError(f"Failure of {failed_blocks} blocks failed during compression. Process incomplete.")
+    
     # Write compressed blocks to the output file
     with open(output_file, 'wb') as fout:
-        for idx in range(1, block_number + 1):
+        for idx in range(block_number):
             compressed_data = compressed_blocks.get(idx)
             if compressed_data is None:
                 logging.error(f"Block {idx} missing. Incomplete compression.")
-                continue
+                raise RuntimeError(f"Block {idx} missing. Incomplete compression.")
             
             logging.debug(f"Start writing compressed {idx} block.")
 
             # Write the block metadata
-            fout.write(compressed_data['padding_length'].to_bytes(1, byteorder='big'))
-            fout.write(compressed_data['orig_ptr'].to_bytes(4, byteorder='big'))
-
-            save_symbols(fout, compressed_data['symbols'])
-            save_huffman_codes(fout, compressed_data['huffman_codes'])
-
-            fout.write(len(compressed_data['data']).to_bytes(4, byteorder='big'))
-            fout.write(compressed_data['data'])
+            pickle.dump(compressed_data, fout)
 
             logging.debug(f"Writing block {idx} completed.")
     
@@ -141,32 +147,18 @@ def decompress_file(input_file, output_file, key):
     # Read compressed file and parse it into blocks
     blocks = []
     with open(input_file, 'rb') as fin:
-        while fin.tell() < compressed_size:
-            block_number = len(blocks) + 1
-            logging.debug(f"Beginning block reading: {block_number}.")
-
-            # Read the block metadata
-            padding_length = int.from_bytes(fin.read(1), byteorder='big')
-            orig_ptr = int.from_bytes(fin.read(4), byteorder='big')
-
-            symbols = load_symbols(fin)
-            huffman_codes = load_huffman_codes(fin)
-
-            data_length = int.from_bytes(fin.read(4), byteorder='big')
-            huffman_encoded = bytearray(fin.read(data_length))
-
-            # Build the block metadata struct
-            compressed_data = {
-                'data': huffman_encoded,
-                'padding_length': padding_length,
-                'orig_ptr': orig_ptr,
-                'symbols': symbols,
-                'huffman_codes': huffman_codes
-            }
-            blocks.append((block_number, compressed_data))
-
-    # Only data block filter
-    blocks = [block for block in blocks if block[1]['data']]
+        while True:
+            try:
+                compressed_data = pickle.load(fin)
+                block_number = compressed_data['block_number']
+                blocks.append((block_number, compressed_data, key))
+            except EOFError:
+                logging.debug("End of compressed file reached.")
+                break
+            except Exception as e:
+                logging.error(f"Error reading block: {e}")
+                raise RuntimeError(f"Error reading block: {e}")
+    
     logging.info(f"Total blocks to decompress: {len(blocks)}.")
 
     # Calculation of the maximum number of processes to use a maximum of 60% of the cores
@@ -178,32 +170,34 @@ def decompress_file(input_file, output_file, key):
     decompressed_blocks = {}
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         # Start the process pool executor mapping
-        futures = {executor.submit(decompress_block, block_data, key): idx for idx, block_data in blocks}
+        futures = {executor.submit(decompress_block, args): args[0] for args in blocks}
 
         for future in as_completed(futures):
             idx = futures[future]
             try:
-                decompressed_data = future.result()
-                decompressed_blocks[idx] = decompressed_data
+                block_number, decompressed_data = future.result()
+                if decompressed_data:
+                    decompressed_blocks[idx] = decompressed_data
+                else:
+                    logging.error(f"Decompression failed for block {idx}.")
+                    raise RuntimeError(f"Compression failed for block {idx}.")
             except Exception as e:
                 logging.error(f"Error decompressing block {idx}: {e}")
+                raise RuntimeError(f"Error decompressing block {idx}: {e}")
 
     # Count failed blocks after parallel decompression
-    failed_blocks = sum(1 for idx in range(1, len(blocks) + 1) if decompressed_blocks.get(idx) is None)
+    failed_blocks = sum(1 for idx in range(len(blocks)) if decompressed_blocks.get(idx) is None)
     if failed_blocks > 0:
-        logging.error(f"{failed_blocks} blocks failed during decompression. Process incomplete.")
-        raise ValueError(f"{failed_blocks} blocks failed during decompression. Process incomplete.")
+        logging.error(f"Failure of {failed_blocks} blocks failed during decompression. Process incomplete.")
+        raise RuntimeError(f"Failure of {failed_blocks} blocks failed during decompression. Process incomplete.")
 
-    with open(output_file, 'w', encoding='utf-8') as fout:
-        for idx in range(1, len(blocks) + 1):
-            decompressed_data = decompressed_blocks.get(idx)
-            if decompressed_data is None:
-                logging.error(f"Block {idx} missing. Incomplete decompression.")
-                continue
-            
-            logging.debug(f"Start writing the decompressed {idx} block.")
+    # Decompressed order block with the correct order
+    sorted_blocks = [decompressed_blocks[idx] for idx in sorted(decompressed_blocks.keys())]
+    
+    # Write the blocks int the output file
+    with open(output_file, 'wb') as fout:
+        for decompressed_data in sorted_blocks:
             fout.write(decompressed_data)
-            logging.debug(f"Writing block {idx} completed.")
     
     end_time = time.perf_counter()
     duration = end_time - start_time
@@ -217,19 +211,42 @@ def decompress_file(input_file, output_file, key):
 # Main Function
 def main():
     # Ensure at least the operation is specified
-    if len(sys.argv) < 5:
-        print(f"{USAGE}")
+    if len(sys.argv) < 2:
+        print(f"{USAGE_COMPRESSION}\n{USAGE_DECOMPRESSION}")
         sys.exit(1)
 
     # Retrieve operation
     operation = sys.argv[1].lower()
 
-    input_file = sys.argv[2]
-    output_file = sys.argv[3]
-    key = sys.argv[4]
+    # Operation type checking
+    if operation == "compress":
+        if len(sys.argv) != 6:
+            print(USAGE_COMPRESSION)
+            sys.exit(1)
+        mode = sys.argv[2].lower()
+
+        # Mode validation
+        valid_modes = ['lzw', 'bzip2', 'huffman', 'arithmetic']
+        if mode not in valid_modes:
+            print(f"Invalid compression mode '{mode}'. Use one of {valid_modes}.")
+            sys.exit(1)
+
+        input_file = sys.argv[3]
+        output_file = sys.argv[4]
+        key = sys.argv[5]
+    elif operation == "decompress":
+        if len(sys.argv) != 5:
+            print(USAGE_DECOMPRESSION)
+            sys.exit(1)
+        input_file = sys.argv[2]
+        output_file = sys.argv[3]
+        key = sys.argv[4]
+    else:
+        print(f"Operation not recognized. Use 'compress' or 'decompress'.")
+        sys.exit(1)
 
     # Key validation
-    if os.path.isfile(key):
+    if os.path.isfile(key):  # Check if the key is a file
         try:
             with open(key, 'r') as key_file:
                 key = key_file.read().strip()
@@ -253,12 +270,9 @@ def main():
 
     # Operation execution
     if operation == "compress":
-        compress_file(input_file, output_file, key)
+        compress_file(input_file, output_file, mode, key)
     elif operation == "decompress":
         decompress_file(input_file, output_file, key)
-    else:
-        print(f"Operation not recognized. Use 'compress' or 'decompress'.")
-        sys.exit(1)
 
 if __name__ == "__main__":
     main()
