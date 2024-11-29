@@ -3,44 +3,15 @@
 #  | (___ \_|  | |_) | \ \  /\  / /  |_/ | | \_| 
 #   _.____`.   |  __'.  \ \/  \/ /       | |     
 #  | \____) | _| |__) |  \  /\  /       _| |_    
-#   \______.'|_______/    \/  \/       |_____|   
+#   \______.'|_______/    \/  \/       |_____|      (Scrambled Burrows-Wheeler Transform (SBWT)
 #                                                
 
-import logging
+import base64
 import hashlib
+import logging
 import numpy as np
 
 ###################################################################################################
-
-def generate_order_from_key(s, key):
-    """
-    Generates a custom order for characters based on the provided key.
-    
-    Args:
-        s (str or bytes): Input string or data.
-        key (str): Key to generate the custom order.
-
-    Returns:
-        dict: A dictionary mapping each character to its custom order index.
-    """
-    logging.debug("Generating custom order based on the key.")
-    unique_chars = sorted(set(s))  # Extract unique characters from input
-    key_bytes = key.encode('utf-8')
-
-    # Create hashes for each character combined with the key
-    char_hashes = []
-    for c in unique_chars:
-        c_bytes = bytes([c]) if isinstance(c, int) else c.encode('latin1')
-        combined = key_bytes + c_bytes
-        hash_value = hashlib.sha256(combined).hexdigest()
-        char_hashes.append((c, hash_value))
-
-    # Sort characters by their hash values
-    sorted_chars = sorted(char_hashes, key=lambda x: x[1])
-    order = {char: idx for idx, (char, _) in enumerate(sorted_chars)}
-
-    logging.debug(f"Custom order generated: {order}")
-    return order
 
 def build_suffix_array_with_custom_order(s, custom_order):
     """
@@ -95,6 +66,65 @@ def build_suffix_array_with_custom_order(s, custom_order):
 
     logging.debug("Suffix array built successfully.")
     return suffix_array
+
+###################################################################################################
+
+def generate_order_from_key(s, key):
+    """
+    Generates a custom order for characters based on the provided key.
+    
+    Args:
+        s (str or bytes): Input string or data.
+        key (str): Key to generate the custom order.
+
+    Returns:
+        dict: A dictionary mapping each character to its custom order index.
+    """
+    logging.debug("Generating custom order based on the key.")
+
+    # Extract unique characters from input
+    unique_chars = sorted(set(s))
+    key_bytes = key.encode('utf-8')
+
+    # Create hashes for each character combined with the key
+    char_hashes = []
+    for c in unique_chars:
+        c_bytes = bytes([c]) if isinstance(c, int) else c.encode('latin1')
+        combined = key_bytes + c_bytes
+        hash_value = hashlib.sha256(combined).hexdigest()
+        char_hashes.append((c, hash_value))
+
+    # Sort characters by their hash values
+    sorted_chars = sorted(char_hashes, key=lambda x: x[1])
+    order = {char: idx for idx, (char, _) in enumerate(sorted_chars)}
+
+    logging.debug(f"Custom order generated: {order}")
+    return order
+
+def key_derivation(key, block_number):
+    """
+    Derives a sub-key from a master key.
+
+    Args:
+        key (str): The master key, a string of alphanumeric characters.
+        block_number (int): A block number used as an increment in the derivation process.
+
+    Returns:
+        str: A derived sub-key in base64 representation.
+    """
+    logging.debug("Derivation of sub-key by master key.")
+
+    # Concatenating the key with the block number
+    combined_key = f"{key}-{block_number}".encode('UTF-8')
+
+    # Using a hash function (SHA-256) to derive the key
+    derived_key = hashlib.sha256(combined_key).digest()
+
+    # Convert the derived key to base64 for safe string representation
+    encoded_key = base64.b64encode(derived_key).decode('ascii')
+
+    logging.debug("Derivation of sub-key by master key complete.")
+    return encoded_key
 
 ###################################################################################################
 

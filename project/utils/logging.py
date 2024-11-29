@@ -12,7 +12,7 @@ import logging
 ###################################################################################################
 
 # Usage messages
-USAGE_COMPRESSION = "Usage for compression:\npython3 script.py compress <lzw | bzip2 | huffman | arithmetic> <input_file> <output_file> <key | file.key>"
+USAGE_COMPRESSION = "Usage for compression:\npython3 script.py compress <lzw | bzip2 | huffman | arithmetic> <input_file> <output> <key | file.key>"
 USAGE_DECOMPRESSION = "Usage for compression:\npython3 script.py decompress <input_file> <output_file> <key | file.key>"
 
 ###################################################################################################

@@ -4,18 +4,20 @@
 #  | |\  /| |  `'_\ : [  | [ `.-. |  
 # _| |_\/_| |_ // | |, | |  | | | |  
 #|_____||_____|\'-;__/[___][___||__] 
-                                                                                                                             
+                                                           
 # Multi-processing
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Serialization
-import pickle
+import msgpack as msg_classic
+import msgpack_numpy as msg_np
 
 # System libraries
 import os
 import sys
 import time
+import struct
 
 # Support libraries
 from utils.logging import *
@@ -63,7 +65,7 @@ def compress_file(input_file, output_file, mode, key):
             blocks.append((block_number, input_data, mode, key_derivation(key, block_number)))
             block_number += 1
 
-            # Input size calculation
+            # Input file size calculation
             input_size += len(input_data)
     logging.info(f"Input file size: {input_size} bytes.")
     
@@ -108,8 +110,12 @@ def compress_file(input_file, output_file, mode, key):
             
             logging.debug(f"Start writing compressed {idx} block.")
 
-            # Write the block metadata
-            pickle.dump(compressed_data, fout)
+            # Pack the data with msgpack serialization
+            packed_data = msg_np.packb(compressed_data, use_bin_type=True)
+
+            # Write data (unsigned int (I))
+            fout.write(struct.pack('I', len(packed_data)))
+            fout.write(packed_data)
 
             logging.debug(f"Writing block {idx} completed.")
     
@@ -119,6 +125,8 @@ def compress_file(input_file, output_file, mode, key):
     
     # Dimension of the compressed file
     log_metrics(output_file, input_size, "compress")
+
+###################################################################################################
 
 # Decompress an input file in parallel blocks
 def decompress_file(input_file, output_file, key):
@@ -149,12 +157,21 @@ def decompress_file(input_file, output_file, key):
     with open(input_file, 'rb') as fin:
         while True:
             try:
-                compressed_data = pickle.load(fin)
+                # Get the data length
+                data_length = fin.read(4)
+                if not data_length:
+                    break
+                
+                # Read the block length
+                block_length = struct.unpack('I', data_length)[0]
+
+                # Read the block data
+                packed_data = fin.read(block_length)
+
+                # Deserialize the block data
+                compressed_data = msg_np.unpackb(packed_data, strict_map_key=False, raw=False)
                 block_number = compressed_data['block_number']
                 blocks.append((block_number, compressed_data, key_derivation(key, block_number)))
-            except EOFError:
-                logging.debug("End of compressed file reached.")
-                break
             except Exception as e:
                 logging.error(f"Error reading block: {e}")
                 raise RuntimeError(f"Error reading block: {e}")
@@ -223,10 +240,9 @@ def main():
         if len(sys.argv) != 6:
             print(USAGE_COMPRESSION)
             sys.exit(1)
-        mode = sys.argv[2].lower()
 
-        # Mode validation
         valid_modes = ['lzw', 'bzip2', 'huffman', 'arithmetic']
+        mode = sys.argv[2].lower()
         if mode not in valid_modes:
             print(f"Invalid compression mode '{mode}'. Use one of {valid_modes}.")
             sys.exit(1)
@@ -238,6 +254,7 @@ def main():
         if len(sys.argv) != 5:
             print(USAGE_DECOMPRESSION)
             sys.exit(1)
+            
         input_file = sys.argv[2]
         output_file = sys.argv[3]
         key = sys.argv[4]
@@ -246,7 +263,7 @@ def main():
         sys.exit(1)
 
     # Key validation
-    if os.path.isfile(key):  # Check if the key is a file
+    if os.path.isfile(key):
         try:
             with open(key, 'r') as key_file:
                 key = key_file.read().strip()
@@ -255,7 +272,7 @@ def main():
             logging.error(f"Failed to load key from file: {e}")
             sys.exit(1)
 
-    if not key or len(key) < 16 or len(key)>32 or not key.isalnum():
+    if not key or not (16 <= len(key) <= 32) or not key.isalnum():
         print("Invalid key provided. The key must be at least 16 to 32 alphanumeric characters.")
         sys.exit(1)
 

@@ -3,6 +3,7 @@
 blosc2==2.7.1
 Cython==3.0.11
 msgpack==1.1.0
+msgpack-numpy==0.4.8
 ndindex==1.9.2
 numexpr==2.10.1
 numpy==2.1.3

@@ -190,25 +190,3 @@ def decompress_block(args):
         raise RuntimeError("Block decompression failed.") from e
 
 ###################################################################################################
-
-def key_derivation(key, block_number):
-    """
-    Derives a sub-key from a master key"""
-    key_length = len(key)
-    
-    # Encoding key in bytes, then in integer to increment
-    key_in_bytes = key.encode('UTF-8') 
-    key_as_number = int.from_bytes(key_in_bytes, byteorder='big')  
-
-    # key_length char = key_length * 8 bit
-    max_value = (1 << (key_length * 8)) - 1  
-
-    # Cyclic sum to avoid overflow
-    incremented_number = (key_as_number + 1 + block_number) % (max_value + 1)
-
-    # Re-encoding in bytes
-    new_key_bytes = incremented_number.to_bytes(key_length, byteorder='big', signed=False)
-
-    return new_key_bytes.decode('UTF-8')
-
-###################################################################################################
