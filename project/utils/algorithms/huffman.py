@@ -5,7 +5,6 @@
 # _| |  | |_ | \_/ |, | |    | |   | | | | | | // | |, | | | |  
 #|____||____|'.__.'_/[___]  [___] [___||__||__]\'-;__/[___||__]                                                              
 
-import math
 import heapq
 import logging
 import numpy as np
@@ -71,41 +70,49 @@ def build_huffman_codes(root):
     """
     logging.debug("Starting Huffman code generation.")
 
-    # Init the codes dict
+    # Init the stack trace and the codes
+    stack = [(root, "")]
     codes = {}
 
-    # Recursive function to generate codes
-    def generate_codes(node, current_code):
-        if node is None:
-            return
-        if node.symbol is not None:
-            codes[node.symbol] = current_code
-        generate_codes(node.left, current_code + "0")   # Traverse left subtree
-        generate_codes(node.right, current_code + "1")  # Traverse right subtree
+    # Start the iterative codes generation
+    while stack:
+        node, current_code = stack.pop()
+        if node is not None:
+            if node.symbol is not None:
+                codes[node.symbol] = current_code
+            else:
+                stack.append((node.right, current_code + "1"))
+                stack.append((node.left, current_code + "0"))
 
-    generate_codes(root, "")
     logging.debug("Huffman codes successfully generated.")
     return codes
 
 # Helper function for padding operations
-def apply_padding(bits, padding_length=0, mode='add'):
+def apply_padding(bits, padding_length=None, mode='add'):
     """
-    Applies or removes padding to ensure the bitstring is a multiple of 8.
+    Adds or removes padding to ensure the bitstring is a multiple of 8.
     
     Args:
         bits (str): The bitstring to pad or unpad.
-        padding_length (int): The amount of padding to apply or remove.
+        padding_length (int): Number of padding bits to add or remove.
         mode (str): 'add' to apply padding, 'remove' to remove padding.
-        
+    
     Returns:
-        str: The modified bitstring.
+        tuple or str: Padded bitstring and padding length (if 'add'),
+                      or bitstring without padding (if 'remove').
     """
     if mode == 'add':
-        padding_length = 8 - (len(bits) % 8) if len(bits) % 8 != 0 else 0
-        return bits + '0' * padding_length, padding_length
-    elif mode == 'remove' and padding_length > 0:
-        return bits[:-padding_length]
-    return bits
+        if padding_length is None:
+            padding_length = (8 - len(bits) % 8) % 8
+        padded_bits = bits + '0' * padding_length
+        return padded_bits, padding_length
+    elif mode == 'remove':
+        if padding_length is None:
+            raise ValueError("Padding length must be provided for removal.")
+        unpadded_bits = bits[:-padding_length] if padding_length else bits
+        return unpadded_bits
+    else:
+        raise ValueError("Invalid mode. Use 'add' or 'remove'.")
 
 ###################################################################################################
 
@@ -172,69 +179,5 @@ def huffman_decode(encoded_bytes, huffman_codes, padding_length):
     
     logging.debug("Huffman decoding completed.")
     return decoded
-
-###################################################################################################
-
-# Save Huffman codes
-def save_huffman_codes(file, huffman_codes):
-    """
-    Saves Huffman codes to a file in an efficient format.
-    
-    Args:
-        f (file object): The file to write to.
-        huffman_codes (dict): Mapping of symbols to Huffman codes.
-    """
-    logging.debug("Saving Huffman codes.")
-
-    # Write the number of codes
-    file.write(len(huffman_codes).to_bytes(2, byteorder='big'))
-    for symbol, code in huffman_codes.items():
-        # Write the symbol (4 bytes)
-        file.write(symbol.to_bytes(4, byteorder='big'))
-        code_length = len(code)
-
-        # Write code length
-        file.write(code_length.to_bytes(1, byteorder='big'))
-        code_bytes_length = math.ceil(code_length / 8)
-        code_int = int(code, 2)
-        code_bytes = code_int.to_bytes(code_bytes_length, byteorder='big')
-
-        # Write the code bytes
-        file.write(code_bytes)
-    
-    logging.debug("Huffman codes saved successfully.")
-
-# Load Huffman codes
-def load_huffman_codes(file):
-    """
-    Loads Huffman codes from a file.
-    
-    Args:
-        f (file object): The file to read from.
-        
-    Returns:
-        dict: Mapping of symbols to Huffman codes.
-    """
-    logging.debug("Loading Huffman codes.")
-
-    huffman_codes = {}
-    huffman_codes_length = int.from_bytes(file.read(2), byteorder='big')
-
-    for _ in range(huffman_codes_length):
-        # Read the symbol (4 bytes)
-        symbol = int.from_bytes(file.read(4), byteorder='big')
-
-        # Read code length
-        code_length = int.from_bytes(file.read(1), byteorder='big')
-        code_bytes_length = math.ceil(code_length / 8)
-
-        # Read the code
-        code_bytes = file.read(code_bytes_length)
-        code_int = int.from_bytes(code_bytes, byteorder='big')
-        code = bin(code_int)[2:].zfill(code_length)
-        huffman_codes[symbol] = code
-    
-    logging.debug("Huffman codes loaded successfully.")
-    return huffman_codes
 
 ###################################################################################################

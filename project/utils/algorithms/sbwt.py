@@ -9,72 +9,64 @@
 import base64
 import hashlib
 import logging
-import numpy as np
+from collections import Counter
 
 ###################################################################################################
 
-def build_suffix_array_with_custom_order(s, custom_order):
+def build_suffix_array(custom_order, data):
     """
     Builds the suffix array of a string using a custom character order.
-    
+
     Args:
-        s (str or bytes): Input string or data.
         custom_order (dict): Mapping of characters to custom order indices.
+        data (str or bytes): Input string or data.
 
     Returns:
         list: Suffix array of the string.
     """
     logging.debug("Building the suffix array with custom order.")
-    n = len(s)  # Length of the input
-    step_size = 1  # Initial comparison is based on the first character
+    length = len(data)
+    step_size = 1
 
-    # Convert input to a list of integers if necessary (bytes or ord values)
-    s_int = list(s) if isinstance(s, bytes) else [ord(c) for c in s]
-
-    # Initialize ranks using the custom order of characters
+    # Convert input to integers using custom order
+    s_int = list(data) if isinstance(data, bytes) else [ord(c) for c in data]
     suffix_ranks = [custom_order[char] for char in s_int]
-    temp_ranks = [0] * n  # Temporary storage for updated ranks
-    suffix_array = list(range(n))  # Initial suffix array (0 to n-1)
+    suffix_array = list(range(length))
 
     # Iteratively refine the suffix array
-    while step_size < n:
-        # Create sorting keys: (current rank, next rank) for each suffix
-        sorting_keys = [
-            (
-                (suffix_ranks[i], suffix_ranks[i + step_size] if i + step_size < n else -1),
-                i
-            )
-            for i in suffix_array
-        ]
-        
-        # Sort the suffix indices based on the sorting keys
-        sorting_keys.sort()
-        suffix_array = [index for _, index in sorting_keys]
+    while step_size < length:
+        # Use tuple of (current rank, next rank) as sorting key
+        suffix_array.sort(key=lambda i: (
+            suffix_ranks[i],
+            suffix_ranks[i + step_size] if i + step_size < length else -1
+        ))
 
         # Update ranks based on sorted suffix indices
+        temp_ranks = [0] * length
         new_rank = 0
-        temp_ranks[suffix_array[0]] = new_rank  # First suffix gets rank 0
-        for i in range(1, n):
-            # If the current key is different from the previous, increment the rank
-            if sorting_keys[i][0] != sorting_keys[i - 1][0]:
+        temp_ranks[suffix_array[0]] = new_rank
+        for i in range(1, length):
+            prev, curr = suffix_array[i - 1], suffix_array[i]
+            if (suffix_ranks[prev], suffix_ranks[prev + step_size] if prev + step_size < length else -1) != \
+               (suffix_ranks[curr], suffix_ranks[curr + step_size] if curr + step_size < length else -1):
                 new_rank += 1
-            temp_ranks[suffix_array[i]] = new_rank
+            temp_ranks[curr] = new_rank
 
-        # Prepare for the next iteration
-        suffix_ranks = temp_ranks[:]
-        step_size <<= 1  # Double the step size for the next iteration
+        # Update suffix ranks and double the step size
+        suffix_ranks = temp_ranks
+        step_size <<= 1
 
     logging.debug("Suffix array built successfully.")
     return suffix_array
 
 ###################################################################################################
 
-def generate_order_from_key(s, key):
+def generate_order_from_key(data, key):
     """
     Generates a custom order for characters based on the provided key.
     
     Args:
-        s (str or bytes): Input string or data.
+        data (str or bytes): Input string or data.
         key (str): Key to generate the custom order.
 
     Returns:
@@ -83,7 +75,7 @@ def generate_order_from_key(s, key):
     logging.debug("Generating custom order based on the key.")
 
     # Extract unique characters from input
-    unique_chars = sorted(set(s))
+    unique_chars = set(data)
     key_bytes = key.encode('utf-8')
 
     # Create hashes for each character combined with the key
@@ -91,7 +83,7 @@ def generate_order_from_key(s, key):
     for c in unique_chars:
         c_bytes = bytes([c]) if isinstance(c, int) else c.encode('latin1')
         combined = key_bytes + c_bytes
-        hash_value = hashlib.sha256(combined).hexdigest()
+        hash_value = hashlib.sha256(combined).digest()
         char_hashes.append((c, hash_value))
 
     # Sort characters by their hash values
@@ -100,6 +92,8 @@ def generate_order_from_key(s, key):
 
     logging.debug(f"Custom order generated: {order}")
     return order
+
+###################################################################################################
 
 def key_derivation(key, block_number):
     """
@@ -145,16 +139,23 @@ def sbwt_encode(data, key):
     if data[-1] != 0:
         data += bytes([0])
 
+    # Generate custom order from key
     custom_order = generate_order_from_key(data, key)
-    sa = build_suffix_array_with_custom_order(data, custom_order)
-    n = len(sa)
+
+    # Build the suffix array
+    suffix_array = build_suffix_array(custom_order, data)
+    suffix_array_length = len(suffix_array)
 
     # Create the last column from the suffix array
-    last_column = bytes([data[(idx - 1) % n] for idx in sa])
-    orig_ptr = sa.index(0)
+    last_column = bytes([data[(idx - 1) % suffix_array_length] for idx in suffix_array])
+    orig_ptr = suffix_array.index(0)
 
     logging.debug("SBWT encoding completed.")
     return last_column, orig_ptr
+
+###################################################################################################
+
+from collections import defaultdict
 
 def sbwt_decode(last_column, orig_ptr, key):
     """
@@ -169,44 +170,32 @@ def sbwt_decode(last_column, orig_ptr, key):
         bytes: The decoded original data.
     """
     logging.debug("Starting SBWT decoding.")
-    
+
     n = len(last_column)
     custom_order = generate_order_from_key(last_column, key)
 
     # Count occurrences of each character
-    count = np.zeros(256, dtype=int)
-    for byte in last_column:
-        count[byte] += 1
+    count = Counter(last_column)
 
-    # Calculate cumulative positions for each character
-    cumulative_count = np.zeros(256, dtype=int)
+    # Calculate cumulative positions
+    cumulative_count = {}
     total = 0
-    for i in range(256):
-        cumulative_count[i] = total
-        total += count[i]
+    for char in sorted(count.keys(), key=lambda x: custom_order[x]):
+        cumulative_count[char] = total
+        total += count[char]
 
-    # Sort last_column using the custom order to form the first column
-    first_column = sorted(
-        [(byte, idx) for idx, byte in enumerate(last_column)],
-        key=lambda x: (custom_order[x[0]], x[0])
-    )
-
-    # Map last_column positions to first_column positions
-    t = np.zeros(n, dtype=int)
-    char_positions = {i: [] for i in range(256)}
-    for idx, byte in enumerate(last_column):
-        char_positions[byte].append(idx)
-
-    pos_in_char = {i: 0 for i in range(256)}
-    for sorted_idx, (byte, _) in enumerate(first_column):
-        orig_idx = char_positions[byte][pos_in_char[byte]]
-        t[sorted_idx] = orig_idx
-        pos_in_char[byte] += 1
+    # Map last_column to first_column using cumulative positions
+    next_pos = defaultdict(int)
+    t = [0] * n
+    for idx, char in enumerate(last_column):
+        t_idx = cumulative_count[char] + next_pos[char]
+        t[t_idx] = idx
+        next_pos[char] += 1
 
     # Reconstruct the original data
     idx = orig_ptr
     decoded = bytearray()
-    for _ in range(n - 1):  # Skip the terminator
+    for _ in range(n - 1):
         idx = t[idx]
         decoded.append(last_column[idx])
 

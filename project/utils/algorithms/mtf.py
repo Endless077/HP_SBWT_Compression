@@ -6,6 +6,7 @@
 #|_____||_____|'.__.'   \__/   '.__.'  \__/ '.__.'  |_____|  [___]    '.__.' [___||__]\__/  
                                                                                            
 import logging
+from collections import deque
 
 ###################################################################################################
 
@@ -22,35 +23,30 @@ def mft_encode(data):
     """
     logging.debug("Starting Move-to-Front (MTF) encoding.")
 
-    # Collect unique symbols from data in the order they appear
+    # Unique symbols collection from data in the order they appear
     symbols = []
-    seen = set()
+    index_map = {}
     for byte in data:
-        if byte not in seen:
-            seen.add(byte)
+        if byte not in index_map:
+            index_map[byte] = len(symbols)
             symbols.append(byte)
 
-    # Initialize the Move-To-Front list with the unique symbols
-    mtf_list = symbols[:]
+    # Move-To-Front list init with the unique symbols
+    mtf_list = deque(symbols)
     encoded = []
 
     # Encode the data using the MTF algorithm
     for byte in data:
-        # Find the index of the current byte in the MTF list
-        index = mtf_list.index(byte)
-        
-        # Append the index to the encoded output
+        # Get the index of the byte using the dictionary
+        index = index_map[byte]
         encoded.append(index)
 
-        # If the byte is not at the front, move it to the front
-        if index != 0:
-            # Remove the byte from its current position and insert it at the front
-            mtf_list.insert(0, mtf_list.pop(index))
+        # Update the MTF list and index_map
+        mtf_list.remove(byte)
+        mtf_list.appendleft(byte)
+        index_map = {value: i for i, value in enumerate(mtf_list)}
 
-    # Log the completion of the encoding process
     logging.debug("MTF encoding completed.")
-
-    # Return the encoded data and the list of unique symbols
     return encoded, symbols
 
 # Move-to-Front Decoding
@@ -68,7 +64,7 @@ def mft_decode(encoded, symbols):
     logging.debug("Starting Move-to-Front (MTF) decoding.")
 
     # Initialize the Move-To-Front list
-    mtf_list = symbols[:]
+    mtf_list = deque(symbols)
     decoded = []
 
     # Iterate over each index in the encoded data
@@ -80,17 +76,13 @@ def mft_decode(encoded, symbols):
 
         # Retrieve the byte corresponding to the current index
         byte = mtf_list[index]
-
-        # Append the byte to the decoded output
         decoded.append(byte)
 
-        # If the byte is not at the front of the MTF list, move it to the front
-        if index != 0:
-            # Remove the byte from its current position and insert it at the front
-            mtf_list.insert(0, mtf_list.pop(index))
+        # Update the MTF list
+        mtf_list.remove(byte)
+        mtf_list.appendleft(byte)
 
     logging.debug("MTF decoding completed.")
     return bytes(decoded)
-
 
 ###################################################################################################
