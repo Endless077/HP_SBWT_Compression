@@ -228,7 +228,7 @@ def decompress_file(input_file, output_file, key):
 # Main Function
 def main():
     # Ensure at least the operation is specified
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 5:
         print(f"{USAGE_COMPRESSION}\n{USAGE_DECOMPRESSION}")
         sys.exit(1)
 
@@ -237,9 +237,6 @@ def main():
 
     # Operation type checking
     if operation == "compress":
-        if len(sys.argv) != 6:
-            print(USAGE_COMPRESSION)
-            sys.exit(1)
 
         valid_modes = ['lzw', 'bzip2', 'huffman', 'arithmetic']
         mode = sys.argv[2].lower()
@@ -248,16 +245,17 @@ def main():
             sys.exit(1)
 
         input_file = sys.argv[3]
-        output_file = sys.argv[4]
-        key = sys.argv[5]
+        key = sys.argv[4]
+
+        root, ext = os.path.splitext(input_file)
+        output_file = root + ".bin"
+
     elif operation == "decompress":
-        if len(sys.argv) != 5:
-            print(USAGE_DECOMPRESSION)
-            sys.exit(1)
-            
+        
         input_file = sys.argv[2]
         output_file = sys.argv[3]
         key = sys.argv[4]
+
     else:
         print(f"Operation not recognized. Use 'compress' or 'decompress'.")
         sys.exit(1)

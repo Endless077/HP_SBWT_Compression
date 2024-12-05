@@ -1,10 +1,10 @@
-#  ______                                            _    
-#.' ____ \                                          / |_  
-#| (___ \_|__   _  _ .--.   _ .--.    .--.   _ .--.`| |-' 
-# _.____`.[  | | |[ '/'`\ \[ '/'`\ \/ .'`\ \[ `/'`\]| |   
-#| \____) || \_/ |,| \__/ | | \__/ || \__. | | |    | |,  
-# \______.''.__.'_/| ;.__/  | ;.__/  '.__.' [___]   \__/  
-#                 [__|     [__|                           
+#  ______                                            _
+#.' ____ \                                          / |_
+#| (___ \_|__   _  _ .--.   _ .--.    .--.   _ .--.`| |-'
+# _.____`.[  | | |[ '/'`\ \[ '/'`\ \/ .'`\ \[ `/'`\]| |
+#| \____) || \_/ |,| \__/ | | \__/ || \__. | | |    | |,
+# \______.''.__.'_/| ;.__/  | ;.__/  '.__.' [___]   \__/
+#                 [__|     [__|
 
 # Compression Algorithms
 from utils.algorithms.lzw import *
@@ -21,13 +21,13 @@ from utils.algorithms.sbwt import *
 # Data Compression
 def compress_data(block_number, data, mode, key):
     """
-    Compresses a block of data using SBWT, MTF, and Huffman encoding.
+    Compresses a block of data using SBWT, MTF, and specified encoding.
 
     Args:
-        block_number (int): The block id number, used to track or identify the specific block being compressed.
-        data (bytes): The input data to be compressed, provided as a byte sequence.
+        block_number (int): The block id number.
+        data (bytes): The input data to be compressed.
         mode (str): The compression algorithm.
-        key (str): Key used for SBWT decoding.
+        key (str): Key used for SBWT encoding.
 
     Returns:
         dict: Contains compressed data and related metadata.
@@ -76,7 +76,14 @@ def compress_data(block_number, data, mode, key):
             }
         elif mode == 'arithmetic':
             # Arithmetic Encoding
-            raise NotImplementedError("Arithmetic Compression not implemented.")
+            encoded_data_bytes = arithmetic_encode(mtf_encoded)
+            compressed_data = {
+                'mode': mode,
+                'symbols': symbols,
+                'orig_ptr': orig_ptr,
+                'data': encoded_data_bytes,
+                'block_number': block_number
+            }
         else:
             logging.error(f"Unknown compression mode: {mode}")
             return None
@@ -87,20 +94,20 @@ def compress_data(block_number, data, mode, key):
 # Data Decompression
 def decompress_data(block_number, compressed_data, key):
     """
-    Decompresses a block of data encoded with SBWT, MTF, and Huffman encoding.
+    Decompresses a block of data encoded with specified encoding.
 
     Args:
-        block_number (int): The block id number, used to track or identify the specific block being compressed.
+        block_number (int): The block id number.
         compressed_data (dict): Compressed data and metadata.
         key (str): Key used for SBWT decoding.
 
     Returns:
-        str: Decompressed data.
+        tuple: Block number and decompressed data.
     """
-    # Compress mode retrive
+    # Retrieving the compression mode
     mode = compressed_data['mode']
     logging.debug(f"Decompressing block {block_number} using mode '{mode}'.")
-    
+
     if mode == 'bzip2':
         # bzip2 decompression algorithm
         decompressed_data = bzip2_decode(compressed_data['data'])
@@ -124,8 +131,13 @@ def decompress_data(block_number, compressed_data, key):
             # Huffman Decoding
             mtf_encoded = huffman_decode(huffman_encoded, huffman_codes, padding_length)
         elif mode == 'arithmetic':
+            # Arithmetic Metadata
+            symbols = compressed_data['symbols']
+            orig_ptr = compressed_data['orig_ptr']
+            encoded_data_bytes = compressed_data['data']
+
             # Arithmetic Decoding
-            raise NotImplementedError("Arithmetic Compression not implemented.")
+            mtf_encoded = arithmetic_decode(encoded_data_bytes)
         else:
             logging.error(f"Unknown decompression mode: {mode}")
             return None
@@ -141,7 +153,7 @@ def decompress_data(block_number, compressed_data, key):
         else:
             logging.error(f"Unknown compression mode: {mode}")
             return None
-        
+
     logging.debug(f"Block {block_number} decompressed using mode '{mode}'.")
     return (block_number, decompressed_data)
 
@@ -177,7 +189,7 @@ def decompress_block(args):
         args (tuple): Block information struct (block_number, compressed_data, key).
 
     Returns:
-        str: The decompressed data as a string.
+        tuple: Block number and the decompressed data.
     """
     logging.debug("Starting decompression of a single block.")
     try:
