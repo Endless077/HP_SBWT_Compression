@@ -75,7 +75,7 @@ def compress_data(block_number, data, mode, key):
                 'padding_length': padding_length
             }
         elif mode == 'arithmetic':
-            # Arithmetic Compression
+            # Arithmetic Encoding
             raise NotImplementedError("Arithmetic Compression not implemented.")
         else:
             logging.error(f"Unknown compression mode: {mode}")
@@ -121,10 +121,10 @@ def decompress_data(block_number, compressed_data, key):
             huffman_codes = compressed_data['huffman_codes']
             padding_length = compressed_data['padding_length']
 
-            # Huffman Decode
+            # Huffman Decoding
             mtf_encoded = huffman_decode(huffman_encoded, huffman_codes, padding_length)
         elif mode == 'arithmetic':
-            # Arithmetic Decompression
+            # Arithmetic Decoding
             raise NotImplementedError("Arithmetic Compression not implemented.")
         else:
             logging.error(f"Unknown decompression mode: {mode}")

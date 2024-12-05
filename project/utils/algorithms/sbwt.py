@@ -3,13 +3,13 @@
 #  | (___ \_|  | |_) | \ \  /\  / /  |_/ | | \_| 
 #   _.____`.   |  __'.  \ \/  \/ /       | |     
 #  | \____) | _| |__) |  \  /\  /       _| |_    
-#   \______.'|_______/    \/  \/       |_____|      (Scrambled Burrows-Wheeler Transform (SBWT)
+#   \______.'|_______/    \/  \/       |_____|      (Scrambled Burrows-Wheeler Transform (SBWT))
 #                                                
 
 import base64
 import hashlib
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
 
 ###################################################################################################
 
@@ -154,8 +154,6 @@ def sbwt_encode(data, key):
     return last_column, orig_ptr
 
 ###################################################################################################
-
-from collections import defaultdict
 
 def sbwt_decode(last_column, orig_ptr, key):
     """
