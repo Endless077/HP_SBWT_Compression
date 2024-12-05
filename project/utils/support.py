@@ -19,7 +19,7 @@ from utils.algorithms.sbwt import *
 ###################################################################################################
 
 # Data Compression
-def compress_data(block_number, data, mode, key):
+def compress_data(block_number, data, extension, mode, key):
     """
     Compresses a block of data using SBWT, MTF, and specified encoding.
 
@@ -34,11 +34,17 @@ def compress_data(block_number, data, mode, key):
     """
     logging.debug(f"Compressing block {block_number} using mode '{mode}'.")
 
+    # Create a common metadata struct
+    metadata = {
+        'mode': mode,
+        'extension': extension,
+        'block_number': block_number
+    }
+
     if mode == 'bzip2':
         # bzip2 compression algorithm
         compressed_data = {
-            'mode': mode,
-            'block_number': block_number,
+            'metadata': metadata,
             'data': bzip2_encode(data)
         }
     else:
@@ -52,37 +58,32 @@ def compress_data(block_number, data, mode, key):
         logging.debug(f"MTF Encoded: {mtf_encoded}")
         logging.debug(f"Symbols: {symbols}")
 
+        # Add 'symbols' and 'orig_ptr' to common metadata
+        metadata['symbols'] = symbols
+        metadata['orig_ptr'] = orig_ptr
+
         if mode == 'lzw':
             # LZW (Lempel–Ziv–Welch) Encoding
             lzw_encoded = lzw_encode(mtf_encoded)
             compressed_data = {
-                'mode': mode,
-                'symbols': symbols,
                 'data': lzw_encoded,
-                'orig_ptr': orig_ptr,
-                'block_number': block_number
+                'metadata': metadata
             }
         elif mode == 'huffman':
             # Huffman Encoding
             huffman_encoded, huffman_codes, padding_length = huffman_encode(mtf_encoded)
             compressed_data = {
-                'mode': mode,
-                'symbols': symbols,
-                'orig_ptr': orig_ptr,
+                'metadata': metadata,
                 'data': huffman_encoded,
-                'block_number': block_number,
                 'huffman_codes': huffman_codes,
                 'padding_length': padding_length
             }
         elif mode == 'arithmetic':
             # Arithmetic Encoding
-            encoded_data_bytes = arithmetic_encode(mtf_encoded)
+            arithmetic_encoded = arithmetic_encode(mtf_encoded)
             compressed_data = {
-                'mode': mode,
-                'symbols': symbols,
-                'orig_ptr': orig_ptr,
-                'data': encoded_data_bytes,
-                'block_number': block_number
+                'metadata': metadata,
+                'data': arithmetic_encoded
             }
         else:
             logging.error(f"Unknown compression mode: {mode}")
@@ -104,26 +105,28 @@ def decompress_data(block_number, compressed_data, key):
     Returns:
         tuple: Block number and decompressed data.
     """
-    # Retrieving the compression mode
-    mode = compressed_data['mode']
+    # Retribing common metadata
+    mode = compressed_data['metadata'].get('mode')
+    extension = compressed_data['metadata'].get('extension')
+
     logging.debug(f"Decompressing block {block_number} using mode '{mode}'.")
 
     if mode == 'bzip2':
         # bzip2 decompression algorithm
         decompressed_data = bzip2_decode(compressed_data['data'])
     else:
+        # Retriving 'symbols' and 'orig_ptr' from common metadata
+        symbols = compressed_data['metadata'].get('symbols')
+        orig_ptr = compressed_data['metadata'].get('orig_ptr')
+
         if mode == 'lzw':
             # LZW (Lempel–Ziv–Welch) Metadata
-            symbols = compressed_data['symbols']
             lzw_encoded = compressed_data['data']
-            orig_ptr = compressed_data['orig_ptr']
 
             # LZW (Lempel–Ziv–Welch) Decoding
             mtf_encoded = lzw_decode(lzw_encoded)
         elif mode == 'huffman':
             # Huffman Metadata
-            symbols = compressed_data['symbols']
-            orig_ptr = compressed_data['orig_ptr']
             huffman_encoded = compressed_data['data']
             huffman_codes = compressed_data['huffman_codes']
             padding_length = compressed_data['padding_length']
@@ -132,8 +135,6 @@ def decompress_data(block_number, compressed_data, key):
             mtf_encoded = huffman_decode(huffman_encoded, huffman_codes, padding_length)
         elif mode == 'arithmetic':
             # Arithmetic Metadata
-            symbols = compressed_data['symbols']
-            orig_ptr = compressed_data['orig_ptr']
             encoded_data_bytes = compressed_data['data']
 
             # Arithmetic Decoding
@@ -155,7 +156,7 @@ def decompress_data(block_number, compressed_data, key):
             return None
 
     logging.debug(f"Block {block_number} decompressed using mode '{mode}'.")
-    return (block_number, decompressed_data)
+    return (block_number, extension, decompressed_data)
 
 ###################################################################################################
 
@@ -172,8 +173,8 @@ def compress_block(args):
     """
     logging.debug("Starting compression of a single block.")
     try:
-        block_number, data, mode, key = args
-        compressed_data = compress_data(block_number, data, mode, key)
+        block_number, data, extension, mode, key = args
+        compressed_data = compress_data(block_number, data, extension, mode, key)
         logging.debug("Block compression completed successfully.")
         return compressed_data
     except Exception as e:

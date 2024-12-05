@@ -31,7 +31,7 @@ BLOCK_SIZE = 64 * 1024
 ###################################################################################################
 
 # Compress an input file in parallel blocks
-def compress_file(input_file, output_file, mode, key):
+def compress_file(input_file, output_file, extension, mode, key):
     """
     Compresses a file by dividing it into blocks and processing them in parallel.
 
@@ -62,7 +62,7 @@ def compress_file(input_file, output_file, mode, key):
                 break
 
             # Block subdivision
-            blocks.append((block_number, input_data, mode, key_derivation(key, block_number)))
+            blocks.append((block_number, input_data, extension, mode, key_derivation(key, block_number)))
             block_number += 1
 
             # Input file size calculation
@@ -170,7 +170,9 @@ def decompress_file(input_file, output_file, key):
 
                 # Deserialize the block data
                 compressed_data = msg_np.unpackb(packed_data, strict_map_key=False, raw=False)
-                block_number = compressed_data['block_number']
+                block_number = compressed_data['metadata'].get('block_number')
+
+                # Append the compressed data block to the blocks list
                 blocks.append((block_number, compressed_data, key_derivation(key, block_number)))
             except Exception as e:
                 logging.error(f"Error reading block: {e}")
@@ -192,7 +194,7 @@ def decompress_file(input_file, output_file, key):
         for future in as_completed(futures):
             idx = futures[future]
             try:
-                block_number, decompressed_data = future.result()
+                block_number, extension, decompressed_data = future.result()
                 if decompressed_data:
                     decompressed_blocks[idx] = decompressed_data
                 else:
@@ -212,6 +214,7 @@ def decompress_file(input_file, output_file, key):
     sorted_blocks = [decompressed_blocks[idx] for idx in sorted(decompressed_blocks.keys())]
     
     # Write the blocks int the output file
+    output_file = output_file + extension
     with open(output_file, 'wb') as fout:
         for decompressed_data in sorted_blocks:
             fout.write(decompressed_data)
@@ -247,7 +250,7 @@ def main():
         input_file = sys.argv[3]
         key = sys.argv[4]
 
-        root, ext = os.path.splitext(input_file)
+        root, extension = os.path.splitext(input_file)
         output_file = root + ".bin"
 
     elif operation == "decompress":
@@ -285,7 +288,7 @@ def main():
 
     # Operation execution
     if operation == "compress":
-        compress_file(input_file, output_file, mode, key)
+        compress_file(input_file, output_file, extension, mode, key)
     elif operation == "decompress":
         decompress_file(input_file, output_file, key)
 
