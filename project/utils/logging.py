@@ -8,12 +8,13 @@
 
 import os
 import logging
+from datetime import datetime
 
 ###################################################################################################
 
 # Usage messages
-USAGE_COMPRESSION = "Usage for compression:\npython3 script.py compress <lzw | bzip2 | huffman | arithmetic> <input_file> <key | file.key>"
-USAGE_DECOMPRESSION = "Usage for compression:\npython3 script.py decompress <input_file> <output_file> <key | file.key>"
+USAGE_COMPRESSION = "Usage for compression:\npython3 hpsbwt.py compress -m <lzw | bzip2 | huffman | arithmetic> -i <input_file> -o <output_file> -k <key | file.key> [-l <log_file>]"
+USAGE_DECOMPRESSION = "Usage for decompression:\npython3 hpsbwt.py decompress -i <input_file> -o <output_file> -k <key | file.key> [-l <log_file>]"
 
 ###################################################################################################
 
@@ -49,11 +50,37 @@ def log_metrics(file_path, reference_size, operation):
     except Exception as e:
         logging.error(f"Error while calculating file size for {operation}: {e}", exc_info=True)
 
-# Basic Log Configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format='[LOG] %(levelname)s - %(asctime)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Setup Logging
+def setup_logging(args, file=None):
+    # Ensure the "logs" directory exists
+    logs_dir = "logs"
+    os.makedirs(logs_dir, exist_ok=True)
+
+    if file:
+        # Use a custom log file
+        log_filename = os.path.join(logs_dir, file)
+    else:
+        # Generate the dynamic log file name
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if args.operation == "compress":
+            log_suffix = f"{args.operation}_{args.mode}_{os.path.basename(args.input)}"
+        else:
+            log_suffix = f"{args.operation}_{os.path.basename(args.input)}"
+            
+        log_filename = os.path.join(logs_dir, f"log_{log_suffix}_{timestamp}.log")
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='[LOG] %(levelname)s - %(asctime)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.FileHandler(log_filename),
+            logging.StreamHandler()
+        ]
+    )
+
+    logging.info(f"Logging configured with file: {log_filename}")
+    return log_filename
 
 ###################################################################################################
