@@ -7,6 +7,7 @@
 #                  ( ( __))( ( __))             ( ( __)) 
 
 import os
+import sys
 import logging
 from datetime import datetime
 
@@ -56,10 +57,9 @@ def setup_logging(args, file=None):
     logs_dir = "logs"
     os.makedirs(logs_dir, exist_ok=True)
 
-    if file:
-        # Use a custom log file
-        log_filename = os.path.join(logs_dir, file)
-    else:
+    log_filename = file
+    
+    if not file:
         # Generate the dynamic log file name
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if args.operation == "compress":
@@ -76,7 +76,7 @@ def setup_logging(args, file=None):
         datefmt='%Y-%m-%d %H:%M:%S',
         handlers=[
             logging.FileHandler(log_filename),
-            logging.StreamHandler()
+            logging.StreamHandler(sys.stdout)
         ]
     )
 

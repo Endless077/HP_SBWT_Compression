@@ -42,7 +42,7 @@ def compress_file(input_file, output_file, extension, mode, key):
         mode (str): Compression mode.
         key (str): Key for SBWT encoding.
     """
-    logging.info(f"Starting compression: {input_file} -> {output_file}")
+    logging.info(f"Starting compression: {input_file} -> {output_file} with mode {mode}.")
     
     # Check the input file
     if not os.path.isfile(input_file):

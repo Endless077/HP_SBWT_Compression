@@ -101,6 +101,9 @@ def main():
     elif operation == "decompress":
         decompress_file(input_file, output_file, key)
 
+    # Exit
+    sys.exit(0)
+
 if __name__ == "__main__":
     main()
 
