@@ -7,6 +7,7 @@
 #                 [__|     [__|
 
 # Compression Algorithms
+from utils.algorithms.rle import *
 from utils.algorithms.lzw import *
 from utils.algorithms.bzip2 import *
 from utils.algorithms.huffman import *
@@ -58,20 +59,24 @@ def compress_data(block_number, data, extension, mode, key):
         logging.debug(f"MTF Encoded: {mtf_encoded}")
         logging.debug(f"Symbols: {symbols}")
 
+        # Transform with RLE (Run Length Transform)
+        rle_encoded = rle_encode(mtf_encoded)
+        logging.debug(f"RLE Encoded: {rle_encoded}")
+
         # Add 'symbols' and 'orig_ptr' to common metadata
         metadata['symbols'] = symbols
         metadata['orig_ptr'] = orig_ptr
 
         if mode == 'lzw':
             # LZW (Lempel–Ziv–Welch) Encoding
-            lzw_encoded = lzw_encode(mtf_encoded)
+            lzw_encoded = lzw_encode(rle_encoded)
             compressed_data = {
                 'data': lzw_encoded,
                 'metadata': metadata
             }
         elif mode == 'huffman':
             # Huffman Encoding
-            huffman_encoded, huffman_codes, padding_length = huffman_encode(mtf_encoded)
+            huffman_encoded, huffman_codes, padding_length = huffman_encode(rle_encoded)
             compressed_data = {
                 'metadata': metadata,
                 'data': huffman_encoded,
@@ -80,7 +85,7 @@ def compress_data(block_number, data, extension, mode, key):
             }
         elif mode == 'arithmetic':
             # Arithmetic Encoding
-            arithmetic_encoded = arithmetic_encode(mtf_encoded)
+            arithmetic_encoded = arithmetic_encode(rle_encoded)
             compressed_data = {
                 'metadata': metadata,
                 'data': arithmetic_encoded
@@ -124,7 +129,7 @@ def decompress_data(block_number, compressed_data, key):
             lzw_encoded = compressed_data['data']
 
             # LZW (Lempel–Ziv–Welch) Decoding
-            mtf_encoded = lzw_decode(lzw_encoded)
+            rle_encoded = lzw_decode(lzw_encoded)
         elif mode == 'huffman':
             # Huffman Metadata
             huffman_encoded = compressed_data['data']
@@ -132,20 +137,24 @@ def decompress_data(block_number, compressed_data, key):
             padding_length = compressed_data['padding_length']
 
             # Huffman Decoding
-            mtf_encoded = huffman_decode(huffman_encoded, huffman_codes, padding_length)
+            rle_encoded = huffman_decode(huffman_encoded, huffman_codes, padding_length)
         elif mode == 'arithmetic':
             # Arithmetic Metadata
             encoded_data_bytes = compressed_data['data']
 
             # Arithmetic Decoding
-            mtf_encoded = arithmetic_decode(encoded_data_bytes)
+            rle_encoded = arithmetic_decode(encoded_data_bytes)
         else:
             logging.error(f"Unknown decompression mode: {mode}")
             return None
 
         if mode in ['huffman', 'arithmetic', 'lzw']:
+            # Inverse Transform with RLE (Run Length Transform)
+            rle_decoded = rle_decode(rle_encoded)
+            logging.debug(f"RLE Decoded: {rle_decoded}")
+            
             # Inverse Transform with MTF (Move To Front Transform)
-            mtf_decoded = mft_decode(mtf_encoded, symbols)
+            mtf_decoded = mft_decode(rle_decoded, symbols)
             logging.debug(f"MTF Decoded: {mtf_decoded}")
 
             # Inverse Transform with SBWT (Scrambled Burrows–Wheeler Transform)
