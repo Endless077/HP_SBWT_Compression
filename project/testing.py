@@ -88,6 +88,7 @@ if __name__ == "__main__":
     logging.info("--- Single mode Statistics ---")
     for mode in stats["compression_ratios"].keys():
         inefficiency_rate = stats["inefficiency_rates"].get(mode, 0)
+        failed_rate = stats["failed_rates"].get(mode, 0)
         average_ratio = stats["average_compression_ratios"].get(mode)
         avg_time = stats["average_mode_times"].get(mode, None)
 
@@ -98,6 +99,7 @@ if __name__ == "__main__":
 
         logging.info(f"Mode: {mode}")
         logging.info(f"- Inefficiency rate: {inefficiency_rate:.2f}%")
+        logging.info(f"- Failed rate: {failed_rate:.2f}%")
         if avg_time is not None:
             logging.info(f"- Average time per file: {avg_time:.2f} s")
         else:

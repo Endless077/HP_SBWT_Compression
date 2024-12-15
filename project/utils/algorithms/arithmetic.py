@@ -112,11 +112,11 @@ def arithmetic_encode(data):
 
     # Pack num_symbols (unsigned int, big-endian) + compressed_data
     # '!I' = network order (big-endian) unsigned int (4 bytes)
-    encoded_data_bytes = struct.pack("!I", num_symbols) + compressed_data
+    encoded_data = struct.pack("!I", num_symbols) + compressed_data
 
     logging.debug("Arithmetic encoding completed.")
 
-    return encoded_data_bytes
+    return encoded_data
 
 
 def arithmetic_decode(encoded_data_bytes):

@@ -55,6 +55,7 @@ def initialize_stats():
         "compression_ratios": {mode: [] for mode in SUPPORTED_MODES},           # List of compression ratios for each mode
         "compression_percentages": {mode: None for mode in SUPPORTED_MODES},    # Average compression percentage per mode
         "inefficiency_rates": {mode: 0 for mode in SUPPORTED_MODES},            # Percentage of inefficient compressions per mode
+        "failed_rates": {mode: 0 for mode in SUPPORTED_MODES},                  # Percentage of failed compressions per mode
         "average_mode_times": {mode: None for mode in SUPPORTED_MODES},         # Average processing time per file in seconds for each mode
         "average_compression_ratios": {mode: None for mode in SUPPORTED_MODES}, # Average compression ratio (efficient only) per mode
         "best_time_mode": None,                                                 # Mode with the fastest average processing time
@@ -189,7 +190,6 @@ def key_validation(key):
 
     return key
 
-
 ###################################################################################################
 
 def process_files(path, log_file, key):
@@ -204,16 +204,6 @@ def process_files(path, log_file, key):
     Returns:
         dict: Fully calculated statistics collected during benchmarking.
     """
-    if os.path.isfile(key):
-        try:
-            with open(key, 'r') as key_file:
-                key = key_file.read().strip()
-        except Exception as e:
-            raise ValueError(f"Failed to load key from file: {e}")
-
-    if not key or not (16 <= len(key) <= 32) or not key.isalnum():
-        raise ValueError("Invalid key provided. Must be 16-32 alphanumeric characters.")
-
     # Initialize statistics structure
     stats = initialize_stats()
 
@@ -266,12 +256,17 @@ def process_files(path, log_file, key):
 
     stats["total_time"] = time.time() - start_time
 
-    # Compute inefficiency rates, average compression ratios, and compression percentages
+    # Compute inefficiency rates, failed rates, average compression ratios, and compression percentages
     for mode, ratios in stats["compression_ratios"].items():
         # Inefficiency rate
         inefficient_count = sum(1 for r in ratios if r > 1)
         total_cases = len(ratios)
         stats["inefficiency_rates"][mode] = (inefficient_count / total_cases * 100) if total_cases > 0 else 0
+
+        # Failed rate
+        failed_count = sum(1 for file, m in stats["failed_files"] if m == mode)
+        total_attempts = stats["file_counts"].get(mode, 0) + failed_count
+        stats["failed_rates"][mode] = (failed_count / total_attempts * 100) if total_attempts > 0 else 0
 
         # Average compression ratio (efficient compressions only)
         efficient_ratios = [r for r in ratios if r <= 1]
@@ -285,7 +280,7 @@ def process_files(path, log_file, key):
                 (1 - sum(efficient_ratios) / len(efficient_ratios)) * 100
             )
         else:
-            stats["compression_percentages"][mode] = None  # No efficient compressions
+            stats["compression_percentages"][mode] = None
 
     # Compute average times per mode
     stats["average_mode_times"] = {
@@ -308,11 +303,16 @@ def process_files(path, log_file, key):
         stats["best_compression_mode"] = min(compression_efficiency, key=compression_efficiency.get)
 
     # Compute Best mode by combined metric
-    time_weight = 0.5
-    compression_weight = 0.5
+    time_weight = 0.4
+    compression_weight = 0.4
+    failed_rate_weight = 0.1
+    inefficiency_rate_weight = 0.1
+
     efficiency_scores = {
         mode: (time_weight * stats["average_mode_times"].get(mode, float('inf')))
                + (compression_weight * compression_efficiency.get(mode, float('inf')))
+               + (failed_rate_weight * stats["failed_rates"].get(mode, 0))
+               + (inefficiency_rate_weight * stats["inefficiency_rates"].get(mode, 0))
         for mode in stats["mode_times"]
         if stats["file_counts"][mode] > 0
     }

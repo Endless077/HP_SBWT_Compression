@@ -18,6 +18,7 @@ import msgpack_numpy as msg_np
 import os
 import time
 import struct
+import base64
 import logging
 
 # Support library
@@ -61,9 +62,12 @@ def compress_file(input_file, output_file, extension, mode, key):
             input_data = fin.read(BLOCK_SIZE)
             if not input_data:
                 break
+            
+            # Encode data in base64
+            encoded_data = base64.b64encode(input_data)
 
             # Block subdivision
-            blocks.append((block_number, input_data, extension, mode, key_derivation(key, block_number)))
+            blocks.append((block_number, encoded_data, extension, mode, key_derivation(key, block_number)))
             block_number += 1
 
             # Input file size calculation
@@ -126,3 +130,5 @@ def compress_file(input_file, output_file, extension, mode, key):
     
     # Dimension of the compressed file
     log_metrics(output_file, input_size, "compress")
+
+###################################################################################################
