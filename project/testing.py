@@ -9,8 +9,9 @@
 # Logging
 import logging
 
-# Json
+# Json/CSV
 import json
+import csv
 
 # System
 import os
@@ -54,16 +55,21 @@ if __name__ == "__main__":
     # Setup logging
     log_folder, log_file, timestamp = setup_logging(args.dataset.rstrip(os.sep))
     json_folder = os.path.join(log_folder, "json")
+    csv_folder = os.path.join(log_folder, "csv")
     os.makedirs(json_folder, exist_ok=True)
+    os.makedirs(csv_folder, exist_ok=True)
 
     # Process the dataset tests
     stats = process_files(args.dataset, log_file, key)
+    stats["dataset"] = os.path.basename(args.dataset.rstrip(os.sep))
 
     # Save benchmark results to JSON file
-    report_file = os.path.join(json_folder, f"benchmark_results_{timestamp}.json")
-    with open(report_file, "w") as json_file:
-        json.dump(stats, json_file, indent=4)
-    logging.info(f"Benchmark results saved to {report_file}.")
+    report_json_file = os.path.join(json_folder, f"benchmark_results_{timestamp}.json")
+    save_json(report_json_file, stats)
+
+    # Save benchmark results to CSV file
+    report_csv_file = os.path.join(csv_folder, f"benchmark_results_{timestamp}.csv")
+    save_csv(report_csv_file, stats)
 
     # Print statistics
     logging.info("#" * 100)

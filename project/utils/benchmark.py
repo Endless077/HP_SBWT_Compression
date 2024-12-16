@@ -7,10 +7,14 @@
 
 import os
 import sys
+import csv
 import time
+import json
 import logging
 import subprocess
 from datetime import datetime
+
+###################################################################################################
 
 SUPPORTED_MODES = ["bzip2", "huffman", "lzw", "arithmetic"]
 
@@ -25,6 +29,7 @@ def initialize_stats():
 
     Returns:
         dict: A dictionary with the following keys:
+            - file (list): File stats (single file stats)
             - total_tests (int): Total number of tests performed across all modes.
             - successful_tests (int): Number of successful compression/decompression tests.
             - failed_tests (int): Number of failed tests.
@@ -44,6 +49,7 @@ def initialize_stats():
             - file_counts (dict): Dictionary with modes as keys and the number of files processed as values.
     """
     return {
+        "file": [],                                                             # File stats (single file stats)
         "total_tests": 0,                                                       # Total number of tests performed across all modes
         "successful_tests": 0,                                                  # Number of successful compression/decompression tests
         "failed_tests": 0,                                                      # Number of failed tests
@@ -63,6 +69,106 @@ def initialize_stats():
         "mode_times": {mode: 0 for mode in SUPPORTED_MODES},                    # Total processing time in seconds per mode
         "file_counts": {mode: 0 for mode in SUPPORTED_MODES},                   # Number of files processed per mode
     }
+
+def key_validation(key):
+    """
+    Validates the encryption key provided as input.
+
+    If the key is a file path, it reads and validates the key from the file. 
+    Otherwise, it directly validates the key string.
+
+    Validation Criteria:
+    - Key must be a string of length between 16 and 32 characters.
+    - Key must contain only alphanumeric characters.
+
+    Args:
+        key (str): The encryption key or the path to a file containing the key.
+
+    Returns:
+        str: The validated key as a string.
+
+    Raises:
+        ValueError: If the key is invalid or if there is an error reading the key from a file.
+    """
+    if os.path.exists(key) and os.path.isfile(key):
+        try:
+            with open(key, 'r') as key_file:
+                key = key_file.read().strip()
+        except Exception as e:
+            raise ValueError(f"Failed to load key from file: {e}")
+
+    if not (16 <= len(key) <= 32 and key.isalnum()):
+        raise ValueError("Invalid key provided. Must be a string of 16 to 32 alphanumeric characters.")
+
+    return key
+
+def save_json(path, data):
+    """
+    Saves the provided data to a JSON file at the specified path.
+
+    Args:
+    path (str): The file path where the JSON file will be saved.
+    data (dict): The data to be saved in JSON format.
+
+    """
+    try:
+        with open(path, "w") as json_file:
+            json.dump(data, json_file, indent=4)
+        logging.info(f"Benchmark results saved to {path}.")
+    except Exception as e:
+        logging.error(f"Failed to save JSON to {path}: {e}", exc_info=True)
+
+def save_csv(path, data):
+    try:
+        with open(path, "w", newline="") as csv_file:
+            csv_writer = csv.writer(csv_file)
+
+            # Write dataset summary statistics
+            csv_writer.writerow([f"Excel/CSV dataset ({data["dataset"]}) stats."])
+            csv_writer.writerow(["Total tests", data['total_tests']])
+            csv_writer.writerow(["Total time (s)", f"{data['total_time']:.2f}"])
+            csv_writer.writerow(["Successful tests", data['successful_tests']])
+            csv_writer.writerow(["Failed tests", data['failed_tests']])
+            csv_writer.writerow([])
+
+            # Write mode-specific statistics
+            csv_writer.writerow(["Mode", "Inefficiency Rate (%)", "Failed Rate (%)", "Average Time (s)", "Average Compression (%)"])
+            for mode in data["compression_ratios"].keys():
+                inefficiency_rate = data["inefficiency_rates"].get(mode, 0)
+                failed_rate = data["failed_rates"].get(mode, 0)
+                average_ratio = data["average_compression_ratios"].get(mode)
+                avg_time = data["average_mode_times"].get(mode, None)
+
+                if average_ratio is not None:
+                    average_compression_percent = (1 - average_ratio) * 100
+                else:
+                    average_compression_percent = None
+
+                csv_writer.writerow([
+                    mode,
+                    f"{inefficiency_rate:.2f}",
+                    f"{failed_rate:.2f}",
+                    f"{avg_time:.2f}"
+                    f"{average_compression_percent:.2f}"
+                ])
+
+            csv_writer.writerow([])
+
+            # Write file-specific statistics
+            csv_writer.writerow(["File", "Mode", "Compression Ratio", "Compression Percent (%)", "Time (s)", "Status"])
+            for file in data["file"]:
+                csv_writer.writerow([
+                    file["file_name"],
+                    file["mode"],
+                    f"{float(file['compression_ratio']):.3f}",
+                    f"{float(file["compression_percent"]):.3f}"
+                    f"{float(file['time']):.3f}",
+                    file["status"]
+                ])
+
+        logging.info(f"Benchmark results saved to {path}.")
+    except Exception as e:
+        logging.error(f"Failed to save CSV to {path}: {e}", exc_info=True)
 
 def setup_logging(path):
     """
@@ -156,38 +262,6 @@ def diff_check(original_file, decompressed_file):
     """
     with open(original_file, 'rb') as original, open(decompressed_file, 'rb') as decompressed:
         return original.read() == decompressed.read()
-    
-def key_validation(key):
-    """
-    Validates the encryption key provided as input.
-
-    If the key is a file path, it reads and validates the key from the file. 
-    Otherwise, it directly validates the key string.
-
-    Validation Criteria:
-    - Key must be a string of length between 16 and 32 characters.
-    - Key must contain only alphanumeric characters.
-
-    Args:
-        key (str): The encryption key or the path to a file containing the key.
-
-    Returns:
-        str: The validated key as a string.
-
-    Raises:
-        ValueError: If the key is invalid or if there is an error reading the key from a file.
-    """
-    if os.path.exists(key) and os.path.isfile(key):
-        try:
-            with open(key, 'r') as key_file:
-                key = key_file.read().strip()
-        except Exception as e:
-            raise ValueError(f"Failed to load key from file: {e}")
-
-    if not (16 <= len(key) <= 32 and key.isalnum()):
-        raise ValueError("Invalid key provided. Must be a string of 16 to 32 alphanumeric characters.")
-
-    return key
 
 ###################################################################################################
 
@@ -212,6 +286,7 @@ def process_files(path, log_file, key):
     for file_name in files:
         file_path = os.path.join(path, file_name)
         for mode in stats["mode_times"].keys():
+            # Create the compressed and decompressed paths
             compressed_path = os.path.join(path, "results", mode, f"{file_name}_compress_{mode}")
             decompressed_path = os.path.join(path, "results", f"{file_name}_decompress_{mode}")
             os.makedirs(os.path.dirname(compressed_path), exist_ok=True)
@@ -220,16 +295,15 @@ def process_files(path, log_file, key):
             stats["total_tests"] += 1
             start_mode_time = time.time()
 
+            # Init file struct
+            file = {
+                "file_name": file_name,
+                "mode": mode,
+            }
+
             try:
                 # Compression
                 compress_file(file_path, compressed_path, mode, key, log_file)
-
-                # Compression efficiency
-                original_size = os.path.getsize(file_path)
-                compressed_size = os.path.getsize(f"{compressed_path}.bin")
-                if compressed_size >= original_size:
-                    stats["inefficient_compressions"] += 1
-                    stats["inefficient_files"].append((file_name, mode))
 
                 # Decompression
                 decompress_file(compressed_path, decompressed_path, mode, key, log_file)
@@ -239,9 +313,28 @@ def process_files(path, log_file, key):
                 if not diff_check(file_path, decompressed_file_path):
                     raise RuntimeError(f"Diff check failed for file {file_name} in mode {mode}.")
 
-                # Calculate compression ratio
+                # Stop stopwatch test
+                elapsed_time = time.time() - start_mode_time
+                
+                # Efficency Computation
+                original_size = os.path.getsize(file_path)
+                compressed_size = os.path.getsize(f"{compressed_path}.bin")
                 compression_ratio = compressed_size / original_size
+
+                if compressed_size >= original_size:
+                    file["status"] = "Inefficient"
+                    stats["inefficient_compressions"] += 1
+                    stats["inefficient_files"].append((file_name, mode))
+                else:
+                    file["status"] = "Success"
+
+                # Compression Ratio
                 stats["compression_ratios"].setdefault(mode, []).append(compression_ratio)
+
+                # Update file-specific stats
+                file["time"] = elapsed_time
+                file["compression_ratio"] = compression_ratio
+                file["compression_percent"] = (1 - compression_ratio) * 100
 
                 # Update time and success count
                 elapsed_time = time.time() - start_mode_time
@@ -249,23 +342,31 @@ def process_files(path, log_file, key):
                 stats["file_counts"][mode] += 1
                 stats["successful_tests"] += 1
 
-            except Exception:
+            except Exception as e:
+                file["time"] = "N/A"
+                file["status"] = "Failed"
+                file["compression_ratio"] = "N/A"
+
                 stats["failed_tests"] += 1
                 stats["failed_files"].append((file_name, mode))
+            
+            # Append specific file stats
+            stats["file"].append(file)
 
+    # Total time
     stats["total_time"] = time.time() - start_time
 
-    # Compute inefficiency rates, failed rates, average compression ratios, and compression percentages
+    # Failed rate, Inefficienct Rate, Average Compression Ratio/Percentage
     for mode, ratios in stats["compression_ratios"].items():
-        # Inefficiency rate
-        inefficient_count = sum(1 for r in ratios if r > 1)
-        total_cases = len(ratios)
-        stats["inefficiency_rates"][mode] = (inefficient_count / total_cases * 100) if total_cases > 0 else 0
-
         # Failed rate
         failed_count = sum(1 for file, m in stats["failed_files"] if m == mode)
         total_attempts = stats["file_counts"].get(mode, 0) + failed_count
         stats["failed_rates"][mode] = (failed_count / total_attempts * 100) if total_attempts > 0 else 0
+
+        # Inefficiency rate
+        inefficient_count = sum(1 for r in ratios if r > 1)
+        total_cases = len(ratios)
+        stats["inefficiency_rates"][mode] = (inefficient_count / total_cases * 100) if total_cases > 0 else 0
 
         # Average compression ratio (efficient compressions only)
         efficient_ratios = [r for r in ratios if r <= 1]
@@ -281,27 +382,28 @@ def process_files(path, log_file, key):
         else:
             stats["compression_percentages"][mode] = None
 
-    # Compute average times per mode
+    # Average Mode Times
     stats["average_mode_times"] = {
         mode: stats["mode_times"][mode] / stats["file_counts"].get(mode, 1)
         for mode in stats["mode_times"]
         if stats["file_counts"][mode] > 0
     }
 
-    # Compute best mode by time
+    # Best Mode by Time
     if stats["average_mode_times"]:
         stats["best_time_mode"] = min(stats["average_mode_times"], key=stats["average_mode_times"].get)
 
-    # Compute best mode by compression
+    # Best Mode by Compression
     compression_efficiency = {
         mode: sum(ratios) / len(ratios)
         for mode, ratios in stats["compression_ratios"].items()
         if ratios
     }
+
     if compression_efficiency:
         stats["best_compression_mode"] = min(compression_efficiency, key=compression_efficiency.get)
 
-    # Compute Best mode by combined metric
+    # Best Mode by Time/Compression
     time_weight = 0.4
     compression_weight = 0.4
     failed_rate_weight = 0.1
@@ -315,6 +417,7 @@ def process_files(path, log_file, key):
         for mode in stats["mode_times"]
         if stats["file_counts"][mode] > 0
     }
+
     if efficiency_scores:
         stats["best_combined_mode"] = min(efficiency_scores, key=efficiency_scores.get)
 
