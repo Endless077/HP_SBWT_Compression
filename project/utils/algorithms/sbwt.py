@@ -4,12 +4,16 @@
 #   _.____`.   |  __'.  \ \/  \/ /       | |     
 #  | \____) | _| |__) |  \  /\  /       _| |_    
 #   \______.'|_______/    \/  \/       |_____|      (Scrambled Burrows-Wheeler Transform (SBWT))
-#                                                
 
 import base64
 import hashlib
 import logging
 from collections import Counter, defaultdict
+
+###################################################################################################
+
+# End of File (EOF)
+EOF = 255
 
 ###################################################################################################
 
@@ -136,8 +140,8 @@ def sbwt_encode(data, key):
     logging.debug("Starting SBWT encoding.")
     
     # Ensure a terminator is present
-    if data[-1] != 0:
-        data += bytes([0])
+    if data[-1] != EOF:
+        data += bytes([EOF])
 
     # Generate custom order from key
     custom_order = generate_order_from_key(data, key)
@@ -193,9 +197,13 @@ def sbwt_decode(last_column, orig_ptr, key):
     # Reconstruct the original data
     idx = orig_ptr
     decoded = bytearray()
-    for _ in range(n - 1):
+    for _ in range(n - 1):  # Exclude the terminator
         idx = t[idx]
         decoded.append(last_column[idx])
+
+    # Remove the terminator before returning
+    if decoded[-1] == EOF:
+        decoded = decoded[:-1]
 
     logging.debug("SBWT decoding completed.")
     return bytes(decoded)

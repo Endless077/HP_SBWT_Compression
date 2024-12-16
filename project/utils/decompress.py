@@ -9,9 +9,6 @@
 # Multi-processing
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, as_completed
-# Multi-processing
-import multiprocessing
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Serialization
 import msgpack as msg_classic
@@ -21,7 +18,6 @@ import msgpack_numpy as msg_np
 import os
 import time
 import struct
-import base64
 import logging
 
 # Support library
@@ -98,7 +94,7 @@ def decompress_file(input_file, output_file, key):
             try:
                 block_number, extension, decompressed_data = future.result()
                 if decompressed_data:
-                    decompressed_blocks[idx] = base64.b64decode(decompressed_data)
+                    decompressed_blocks[idx] = decompressed_data
                 else:
                     logging.error(f"Decompression failed for block {idx}.")
                     raise RuntimeError(f"Compression failed for block {idx}.")
