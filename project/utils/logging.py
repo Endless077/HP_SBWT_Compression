@@ -6,9 +6,12 @@
 # |________| '.__.' .',__`  .',__` [___][___||__].',__`  
 #                  ( ( __))( ( __))             ( ( __)) 
 
+# Logging
+import logging
+
+# System libraries
 import os
 import sys
-import logging
 from datetime import datetime
 
 ###################################################################################################

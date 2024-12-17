@@ -12,8 +12,7 @@ from collections import Counter, defaultdict
 
 ###################################################################################################
 
-# End of File (EOF)
-EOF = 255
+EOF = b'\xFF'
 
 ###################################################################################################
 
@@ -140,8 +139,8 @@ def sbwt_encode(data, key):
     logging.debug("Starting SBWT encoding.")
     
     # Ensure a terminator is present
-    if data[-1] != EOF:
-        data += bytes([EOF])
+    if not data.endswith(EOF):
+        data += EOF
 
     # Generate custom order from key
     custom_order = generate_order_from_key(data, key)
@@ -197,13 +196,13 @@ def sbwt_decode(last_column, orig_ptr, key):
     # Reconstruct the original data
     idx = orig_ptr
     decoded = bytearray()
-    for _ in range(n - 1):  # Exclude the terminator
+    for _ in range(n - len(EOF)):  # Exclude the terminator
         idx = t[idx]
         decoded.append(last_column[idx])
 
     # Remove the terminator before returning
-    if decoded[-1] == EOF:
-        decoded = decoded[:-1]
+    if decoded[-len(EOF):] == EOF:
+        decoded = decoded[:-len(EOF)]
 
     logging.debug("SBWT decoding completed.")
     return bytes(decoded)

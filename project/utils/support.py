@@ -36,6 +36,7 @@ def compress_data(block_number, data, extension, mode, key):
     logging.debug(f"Compressing block {block_number} using mode '{mode}'.")
 
     # Create a common metadata struct
+    # TODO: Encoding "base64" flag
     metadata = {
         'mode': mode,
         'extension': extension,

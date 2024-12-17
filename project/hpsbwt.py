@@ -11,6 +11,7 @@ import sys
 import argparse
 
 # Support libraries
+from utils.utils import *
 from utils.logging import *
 from utils.support import *
 from utils.compress import compress_file

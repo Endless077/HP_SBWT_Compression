@@ -9,11 +9,7 @@
 # Logging
 import logging
 
-# Json/CSV
-import json
-import csv
-
-# System
+# System libraries
 import os
 import sys
 import argparse

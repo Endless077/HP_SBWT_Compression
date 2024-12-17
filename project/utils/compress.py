@@ -18,11 +18,13 @@ import msgpack_numpy as msg_np
 import os
 import time
 import struct
+import base64
 import logging
 
 # Support library
 from utils.logging import *
 from utils.support import *
+from utils.utils import *
 
 ###################################################################################################
 
@@ -51,7 +53,11 @@ def compress_file(input_file, output_file, extension, mode, key):
 
     # Start the counter
     start_time = time.perf_counter()
-    
+
+    # TODO: binary checker
+    # is_binary = binary_detector(input_file, BLOCK_SIZE)
+    # file_encoding = char_detector(input_file, BLOCK_SIZE)
+    # file_encoding = charset_detector(input_file, BLOCK_SIZE)
     # Read the input file and split it into blocks
     blocks = []
     input_size = 0
@@ -61,7 +67,10 @@ def compress_file(input_file, output_file, extension, mode, key):
             input_data = fin.read(BLOCK_SIZE)
             if not input_data:
                 break
-
+            
+            # TODO: Encoding "base64" (if needed)
+            # encoded_data = base64.b64encode(input_data)
+            
             # Block subdivision
             blocks.append((block_number, input_data, extension, mode, key_derivation(key, block_number)))
             block_number += 1

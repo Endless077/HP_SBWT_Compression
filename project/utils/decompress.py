@@ -23,6 +23,7 @@ import logging
 # Support library
 from utils.logging import *
 from utils.support import *
+from utils.utils import *
 
 ###################################################################################################
 
@@ -94,6 +95,7 @@ def decompress_file(input_file, output_file, key):
             try:
                 block_number, extension, decompressed_data = future.result()
                 if decompressed_data:
+                    # TODO: Decoding "base64" (if needed)
                     decompressed_blocks[idx] = decompressed_data
                 else:
                     logging.error(f"Decompression failed for block {idx}.")

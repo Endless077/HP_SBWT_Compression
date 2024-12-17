@@ -5,13 +5,20 @@
 #   _| |__) || \__., | | | | | \__.  | | | |  | | | | | | // | |, | |    | |`\ \  
 #  |_______/  '.__.'[___||__]'.___.'[___]|__][___||__||__]\'-;__/[___]  [__|  \_] 
 
+# Logging
+import logging
+
+# Sub-processing
+import subprocess
+
+# Structured files
+import json
+import csv
+
+# System libraries
 import os
 import sys
-import csv
 import time
-import json
-import logging
-import subprocess
 from datetime import datetime
 
 ###################################################################################################
@@ -136,19 +143,18 @@ def save_csv(path, data):
             for mode in data["compression_ratios"].keys():
                 inefficiency_rate = data["inefficiency_rates"].get(mode, 0)
                 failed_rate = data["failed_rates"].get(mode, 0)
-                average_ratio = data["average_compression_ratios"].get(mode)
+                average_ratio = data["average_compression_ratios"].get(mode, None)
                 avg_time = data["average_mode_times"].get(mode, None)
 
                 if average_ratio is not None:
                     average_compression_percent = (1 - average_ratio) * 100
-                else:
-                    average_compression_percent = None
+                    print("mammt")
 
                 csv_writer.writerow([
                     mode,
                     f"{inefficiency_rate:.2f}",
                     f"{failed_rate:.2f}",
-                    f"{avg_time:.2f}"
+                    f"{avg_time:.2f}",
                     f"{average_compression_percent:.2f}"
                 ])
 
@@ -161,7 +167,7 @@ def save_csv(path, data):
                     file["file_name"],
                     file["mode"],
                     f"{float(file['compression_ratio']):.3f}",
-                    f"{float(file["compression_percent"]):.3f}"
+                    f"{float(file["compression_percent"]):.3f}",
                     f"{float(file['time']):.3f}",
                     file["status"]
                 ])
