@@ -22,8 +22,8 @@ from utils.benchmark import *
 if __name__ == "__main__":
     # Input parser
     parser = argparse.ArgumentParser(description="Run compression and decompression tests on files in a folder.")
-    parser.add_argument("dataset", help="Path to the dataset containing files to test.")
-    parser.add_argument("key", help="Path to the file containing the encryption key.")
+    parser.add_argument("-d", "--dataset", required=True, help="Path to the dataset containing files to test.")
+    parser.add_argument("-k", "--key", required=True, help="Path to the file containing the encryption key.")
 
     args = parser.parse_args()
 
@@ -50,8 +50,8 @@ if __name__ == "__main__":
 
     # Setup logging
     log_folder, log_file, timestamp = setup_logging(args.dataset.rstrip(os.sep))
-    json_folder = os.path.join(log_folder, "json")
-    csv_folder = os.path.join(log_folder, "csv")
+    json_folder = os.path.join(log_folder, "output", "json")
+    csv_folder = os.path.join(log_folder, "output", "csv")
     os.makedirs(json_folder, exist_ok=True)
     os.makedirs(csv_folder, exist_ok=True)
 

@@ -19,6 +19,7 @@ import csv
 import os
 import sys
 import time
+import shutil
 from datetime import datetime
 
 ###################################################################################################
@@ -148,7 +149,6 @@ def save_csv(path, data):
 
                 if average_ratio is not None:
                     average_compression_percent = (1 - average_ratio) * 100
-                    print("mammt")
 
                 csv_writer.writerow([
                     mode,
@@ -191,7 +191,7 @@ def setup_logging(path):
             - log_file (str): The full path to the log file.
             - timestamp (str): The timestamp used for consistent file naming.
     """
-    log_folder = os.path.join(path, "results", "logs")
+    log_folder = os.path.join(path, "results")
     os.makedirs(log_folder, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -286,17 +286,20 @@ def process_files(path, log_file, key):
     # Initialize statistics structure
     stats = initialize_stats()
 
+    # Get all the files in the dataset
     files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
     start_time = time.time()
+
+    # Create temporary directory for compressed and decompressed files
+    temp_dir = os.path.join(path, "tmp")
+    os.makedirs(temp_dir, exist_ok=True)
 
     for file_name in files:
         file_path = os.path.join(path, file_name)
         for mode in stats["mode_times"].keys():
-            # Create the compressed and decompressed paths
-            compressed_path = os.path.join(path, "results", mode, f"{file_name}_compress_{mode}")
-            decompressed_path = os.path.join(path, "results", f"{file_name}_decompress_{mode}")
-            os.makedirs(os.path.dirname(compressed_path), exist_ok=True)
-            os.makedirs(os.path.dirname(decompressed_path), exist_ok=True)
+            # Create paths for compressed and decompressed files in the temporary directory
+            compressed_path = os.path.join(temp_dir, f"{file_name}_compress_{mode}.bin")
+            decompressed_path = os.path.join(temp_dir, f"{file_name}_decompress_{mode}")
 
             stats["total_tests"] += 1
             start_mode_time = time.time()
@@ -358,6 +361,17 @@ def process_files(path, log_file, key):
             
             # Append specific file stats
             stats["file"].append(file)
+
+            # Clean up
+            if os.path.exists(compressed_path):
+                os.remove(compressed_path)
+
+            if os.path.exists(decompressed_path):
+                os.remove(decompressed_path)
+
+    # Remove the temporary directory
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
 
     # Total time
     stats["total_time"] = time.time() - start_time

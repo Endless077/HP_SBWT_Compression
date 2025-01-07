@@ -57,7 +57,7 @@ def compress_file(input_file, output_file, extension, mode, key):
     # TODO: binary checker
     # is_binary = binary_detector(input_file, BLOCK_SIZE)
     # file_encoding = char_detector(input_file, BLOCK_SIZE)
-    # file_encoding = charset_detector(input_file, BLOCK_SIZE)
+
     # Read the input file and split it into blocks
     blocks = []
     input_size = 0
